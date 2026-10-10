@@ -1,7 +1,7 @@
 ---
 title: "Core Concepts: Commands, Workflows, and Workspace Model"
 sidebarTitle: "Concepts"
-description: "Explore the three pillars of Tack Harness — runtime command routing via scan-routes, workflow state machines, and the per-requirement workspace directory model."
+description: "Learn how scan-routes.sh assembles commands at runtime, how five workflow state machines drive status.yaml, and how Git worktrees isolate each requirement."
 ---
 
 Tack Harness is built on three interlocking ideas: a runtime route table assembled from Markdown frontmatter, a set of workflow state machines that orchestrate commands from start to finish, and a flat workspace directory created per requirement that holds every artifact and the single stateful file tracking progress. Understanding these three pillars explains why adding one file is enough to register a new capability, why the AI always knows what stage it is in, and why code changes in one requirement can never contaminate another.
@@ -99,7 +99,7 @@ Any blocked stage may enter the `blocked` state. The blocking reason is recorded
 
 The `development` workflow orchestrates the primary R&D chain. The diagram below shows how commands map to state transitions, and which commands are on-demand (they do not occupy a state slot or block the main chain):
 
-```
+```text
 /tack init
   └─→ /tack work <requirement>        [initialized]
         └─→ /tack spec                [planning]
@@ -159,7 +159,7 @@ Every requirement gets its own isolated workspace at `space/<YYYYMMDD>-<branch>/
 
 Whenever you guide, correct, or add an agreement to the AI's approach during a task, the raw fact is automatically appended to `guidance` with a `raw` marker. No changes to the harness are made at this point. At `close`, all `raw` guidance entries are reviewed and crystallized into `workflow`, `cmd`, or `rule` entries (marked `distilled`), with each landing point verified by `check-guidance.sh` before the workspace is finalized.
 
-```
+```text
 User guidance → guidance[].raw (status.yaml)
                         ↓ (at close)
           workflow / cmd / rule entry (distilled)

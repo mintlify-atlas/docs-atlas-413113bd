@@ -1,7 +1,7 @@
 ---
 title: "Plan: Detailed Development Design and Task Breakdown"
 sidebarTitle: "Plan"
-description: "Turns confirmed spec.md into a full development plan with optional multi-option architecture comparison, low-coupling module breakdown, dependency graph, and a task list synced to status.yaml."
+description: "Turns confirmed spec.md into a development plan: architecture option comparison, module dependency graph, and a task list written to status.yaml."
 ---
 
 The `plan` command is the second stage of Tack Harness's planning phase. It takes the confirmed `spec.md` and produces `plan.md` — a document that answers "what to build first, what comes next, and how to code each part". For complex tasks it first delegates parallel architect sub-agents to produce and compare multiple implementation options before asking the user to select one. All decisions that could interrupt the `code` phase are resolved here, so development can proceed with minimal interruptions.

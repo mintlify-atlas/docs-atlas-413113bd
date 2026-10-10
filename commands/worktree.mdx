@@ -1,7 +1,7 @@
 ---
 title: "Worktree: Create a Missing Git Worktree for a Repository"
 sidebarTitle: "Worktree"
-description: "Add a git worktree for a repository that was not present when the workspace was created, check out the workspace branch, and register the service in status.yaml."
+description: "Create a git worktree for a repository added after workspace setup, check out the workspace branch, and update the service list in status.yaml."
 ---
 
 Tack's `worktree` command creates a git worktree for a specific code repository inside the current workspace. Normally worktrees are created automatically by [`/tack work`](/commands/work) when the workspace is first set up, and by [`/tack code`](/commands/code) when it detects a missing one. Use `worktree` directly only when a repository was added to the project after the workspace was already created — for example, when a new microservice repository is connected mid-task. The worktree is placed at `space/<YYYYMMDD>-<branch>/repo/<repo-name>/` and checks out the workspace branch.

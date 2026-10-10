@@ -28,7 +28,7 @@ summary: What this workflow does in one sentence
 
 ## Workflow File Structure
 
-Every workflow file has four required sections. Unlike commands (which have an entry gate and execution steps), workflows define a state machine and map each state to a command:
+Every workflow file has five sections defined by the template. Unlike commands (which have an entry gate and execution steps), workflows define a state machine and map each state to a command. The first four sections describe the workflow's behavior; the fifth declares the `status.yaml` writeback requirement:
 
 <Steps>
   <Step title="Applicability">
@@ -96,6 +96,19 @@ Every workflow file has four required sections. Unlike commands (which have an e
        - 阻塞条件: 核查清单中存在未确认项 → `status: blocked`
     ```
   </Step>
+
+  <Step title="Status Writeback Requirement">
+    Declares how the AI must update `$work/status.yaml` at each stage transition: which fields to write, when to advance `status`, and what to record in `current.next` when the workflow enters `blocked`.
+
+    ```markdown
+    ## 状态回写要求
+
+    - 每个环节开始前更新 `$work/status.yaml` 的 `current.stage` / `current.task` /
+      `current.next` 与 `updated_at`
+    - 每个环节完成并经人工确认后，置 `progress` 对应开关为 true、推进 `status`
+    - 阻塞时置 `status: blocked` 并在 `current.next` 写明阻塞原因与等待项
+    ```
+  </Step>
 </Steps>
 
 ## State Transitions in Practice
@@ -137,7 +150,7 @@ Copy the template, rename it, and fill in the frontmatter and sections:
 ```bash
 cp harness/template/workflow.md harness/workflow/my-workflow.md
 # Edit the frontmatter: set workflow:, short:, triggers:, summary:
-# Fill in the four required sections
+# Fill in all five sections
 ```
 
 The template (`harness/template/workflow.md`) includes the full section skeleton and a status-table placeholder, so all required structure is in place from the start.
@@ -170,7 +183,7 @@ Workflows orchestrate existing commands. A workflow's stage mapping table refere
     Copy `harness/template/workflow.md`. Reference the new commands in the stage-to-command mapping table. Use their exact `/tack <name>` invocations so the mapping is unambiguous.
   </Step>
   <Step title="Verify end-to-end">
-    Run `scan-routes list harness` to confirm both the new commands and the new workflow appear in the route table. Run `lint-harness.sh harness` to check that all four workflow sections are present and no trigger tokens conflict.
+    Run `scan-routes list harness` to confirm both the new commands and the new workflow appear in the route table. Run `lint-harness.sh harness` to check that the frontmatter is well-formed, all required fields are present, and no trigger tokens conflict with existing commands or workflows.
   </Step>
 </Steps>
 

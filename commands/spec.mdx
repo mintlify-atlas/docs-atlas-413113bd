@@ -1,7 +1,7 @@
 ---
-title: "Spec: Requirement Planning and Overall Design"
+title: "Spec: Requirement Planning and Overall System Design"
 sidebarTitle: "Spec"
-description: "Reads input.md, the wiki, and code facts to produce spec.md — a story split, module boundaries, and acceptance criteria. Never modifies code or invents requirements."
+description: "Reads input.md, wiki, and code facts to produce spec.md with story splits, module boundaries, and acceptance criteria. Code is never modified."
 ---
 
 The `spec` command is the first stage of the Tack Harness development workflow's planning phase. It reads the raw requirement from `input.md` alongside shared knowledge from the wiki and code facts, then organizes everything into a structured requirement planning document — `spec.md`. Think of `spec.md` as the project's **construction blueprint and acceptance contract**: it draws clear system and module boundaries, defines interactions, and establishes acceptance criteria. No implementation details, no data structures, no code — those belong in `plan.md`.

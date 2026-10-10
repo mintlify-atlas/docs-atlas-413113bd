@@ -1,10 +1,10 @@
 ---
-title: "Fetch: Pull and Sync the Latest Remote Code"
+title: "Fetch: Pull and Sync the Latest Code for All Repos"
 sidebarTitle: "Fetch"
 description: "Run git fetch across every repository in the current workspace, auto-correct mismatched upstream tracking, and report each repo's ahead/behind status."
 ---
 
-Tack's `fetch` command iterates over every repository linked to the current workspace and synchronises it with the remote — running `git fetch` only, never a silent merge or rebase. It also detects and auto-corrects upstream tracking mismatches so that each branch always tracks the correctly-named remote counterpart. Run `fetch` before `commit` or `merge` to make sure you are working from the latest remote state.
+Tack's `fetch` command iterates over every repository linked to the current workspace and synchronises each one with its remote — running `git fetch --all --prune` to download all remote references, then `git pull` to fast-forward the local branch. It also detects and auto-corrects upstream tracking mismatches before pulling, so that each branch always tracks the correctly-named remote counterpart. Run `fetch` before `commit` or `merge` to make sure you are working from the latest remote state.
 
 ## Command Signature
 

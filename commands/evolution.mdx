@@ -13,6 +13,7 @@ The `evolution` command is Tack Harness's inward self-review tool. Where `record
 # Aliases:
 /tack evo            # short form
 /tack 进化           # Chinese trigger
+/tack 进化harness    # Chinese trigger
 /tack evolve         # natural language
 /tack evolve harness # natural language
 ```
@@ -55,7 +56,7 @@ This command takes no parameters.
     Enumerates every `.sh` file in `$root/harness/script/` and reads each one fresh.
   </Step>
   <Step title="Audit Every File and Identify Candidates">
-    Each file is reviewed against five candidate types:
+    Each file is reviewed against six candidate types (A-group), plus guidance entries collected in step 3 (B-group):
 
     <Accordion title="Rule Candidates — Extract Repeated Logic">
       **Criteria**: the same rule, criterion, format requirement, or boundary appears in multiple command files, or a single command embeds a large standalone rule block that could be reused elsewhere. Classic pattern: `record.md` → `rule/record-*.md`.
@@ -85,6 +86,12 @@ This command takes no parameters.
       **Criteria**: per AGENTS.md core constraint 13 — descriptions of commands, workflows, fields, scripts, or flows that no longer exist. Once a capability is removed, its description loses its factual basis and must be **deleted wholesale**, not negated or patched.
 
       **Action if selected**: before deletion, a full-repo `grep` builds a reference graph to confirm no real consumers remain. After deletion, verified for no dangling cross-references. When uncertain, downgraded to a candidate for user confirmation rather than auto-deleted.
+    </Accordion>
+
+    <Accordion title="Guidance Candidates — Crystallise Real-Task Instructions">
+      **Criteria**: raw `guidance` entries collected in step 3. Per `harness/rule/record-classification.md` — only cross-workspace reusable operation habits and flow corrections qualify; one-off process notes are excluded. Each entry's own `candidate` field is a starting suggestion, but the target file's current state must still be checked to decide merge-or-create.
+
+      **Action if selected**: guidance entries become workflow, cmd, or rule additions through the `record` flow. A-group structural candidates and B-group guidance candidates are presented in separate tables (step 5). Completed entries are written back as `distilled` with landing paths; dismissed entries are written back as `dismissed`; unselected entries remain `raw`.
     </Accordion>
 
     Additionally, **`AGENTS.md`** is audited for: core-constraint bloat (details that should move to `rule/`), structural ordering and dangling numbered references, and the boundary of its two protected blocks (project-info and distilled-conventions — `evolution` reads but never directly edits these).

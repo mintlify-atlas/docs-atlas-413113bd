@@ -1,7 +1,7 @@
 ---
-title: "Test Code: Requirement-Code Consistency Review via Unit Tests"
+title: "Testcode: Unit Test Coverage and Code Consistency Review"
 sidebarTitle: "Test Code"
-description: "On-demand unit testing that uses test cases to find gaps between spec/plan acceptance criteria and the actual implementation. When tests expose problems, fix the code — not the tests."
+description: "On-demand unit testing that finds gaps between spec/plan acceptance criteria and the implementation. Tests expose problems; fix the code, not the tests."
 ---
 
 The `testcode` command uses unit tests as a **code review instrument**, not just a coverage tool. Its primary purpose is to compare the implementation against `spec.md` and `plan.md` acceptance criteria, identify deviations, missing boundary cases, and latent defects, and then fix the code. Writing tests that expose real problems is the goal; 90% coverage is one exit criterion among several — not the sole purpose. Because `testcode` is an on-demand tool, running it (or not running it) has no effect on whether you can commit and merge.

@@ -1,7 +1,7 @@
 ---
 title: "Code: Task-by-Task Development with Dependency Scheduling"
 sidebarTitle: "Code"
-description: "Verifies repository readiness, then develops tasks in topological order — parallel where deps allow, serial where they don't. Reuses existing patterns and auto-resolves minor decisions without interrupting the user."
+description: "Verifies repo and worktree readiness, then implements tasks from plan.md in dependency order. Auto-resolves minor decisions without interrupting the user."
 ---
 
 The `code` command is Tack Harness's primary development engine. It reads the confirmed `plan.md` and the task list in `status.yaml`, verifies that all required repositories and worktrees are ready, and then drives development task by task in dependency order. Tasks with no mutual dependencies are developed in parallel; tasks that depend on others wait for their predecessors. The AI minimizes interruptions — only stopping for genuine blockers, unresolved business decisions, or module-level milestones — and records every automatic decision in the commit message and delivery summary.

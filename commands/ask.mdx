@@ -1,7 +1,7 @@
 ---
-title: "Ask: Code Analysis and Q&A for Any Worktree"
+title: "Ask: Read-Only Repository Structure Analysis and Q&A"
 sidebarTitle: "Ask"
-description: "Analyze a full repository's structure and responsibilities, or answer targeted code-logic questions. Findings are saved to the workspace wiki and never modify source code."
+description: "Analyzes a full repository or answers targeted code questions. Findings land in the workspace wiki with file:line evidence. Source code is never modified."
 ---
 
 The `ask` command is Tack Harness's read-only reconnaissance tool. It operates in two distinct modes — **whole-repo analysis** and **targeted code Q&A** — and always treats the codebase as the sole source of truth, citing file paths and line numbers for every conclusion. Because `ask` never modifies code and can run at any workflow stage, it is the natural first step before `spec` or `plan` when you are entering an unfamiliar codebase.

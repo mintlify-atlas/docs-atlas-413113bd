@@ -1,7 +1,7 @@
 ---
 title: "Tack Harness: Minimal AI-Assisted R&D Workflow Framework"
 sidebarTitle: "Home"
-description: "Tack Harness is a minimal, fully configurable programming workflow framework that standardizes AI-assisted software development through structured commands, state-machine workflows, and automatic experience distillation."
+description: "Minimal, fully configurable AI-assisted R&D workflow framework with structured commands, state-machine workflows, and automatic experience distillation."
 ---
 
 Tack Harness brings structure to AI-assisted software development. It wraps the full R&D lifecycle — from requirement analysis through code, review, and delivery — into a set of composable commands and state-machine workflows. Every capability is a Markdown file you can add, modify, or remove without changing the core skill.
@@ -48,7 +48,7 @@ Tack Harness is a **programming workflow framework** purpose-built for software 
 | **Extensible capabilities** | Adding one Markdown file registers one new capability; no changes to the skill itself |
 | **Traceable state** | `status.yaml` is the single stateful file — the AI always knows current progress and next action |
 | **Isolated changes** | Git worktrees isolate code changes per requirement; the main repo stays a read-only baseline |
-| **Distilled experience** | Every completed task automatically crystallizes practical knowledge into commands, workflows, rules, or wiki entries |
+| **Distilled experience** | Every completed task automatically crystallizes practical experience into commands, workflows, rules, or wiki entries |
 
 ## Getting started
 
@@ -62,19 +62,19 @@ Tack Harness is a **programming workflow framework** purpose-built for software 
   </Step>
   <Step title="Initialize a project space">
     In an empty directory, run `/tack` to trigger initialization. Tack sets up the workspace skeleton, initializes a Git repository, and guides you through connecting your code repositories.
-    ```
+    ```text
     /tack
     ```
   </Step>
   <Step title="Create your first workspace">
     Create a workspace for a requirement. Tack generates branch name candidates, infers involved services, and creates git worktrees.
-    ```
+    ```text
     /tack work user-login
     ```
   </Step>
   <Step title="Run the development chain">
     Walk through the full R&D chain for the requirement:
-    ```
+    ```text
     /tack spec && /tack plan && /tack code
     /tack commit && /tack push && /tack merge
     /tack close

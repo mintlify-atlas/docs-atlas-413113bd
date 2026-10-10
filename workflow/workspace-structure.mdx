@@ -1,7 +1,7 @@
 ---
 title: "Workspace Structure and the status.yaml State File"
 sidebarTitle: "Workspace Structure"
-description: "Each Tack workspace lives under space/ and contains status.yaml, work documents, and git worktrees. Learn the full project layout, file lifecycle, and the anatomy of the single stateful file."
+description: "Full layout and status.yaml anatomy for Tack workspaces: status.yaml, work documents, and git worktrees, with all field meanings explained."
 ---
 
 Every requirement in Tack gets its own workspace — a flat directory under `space/` that holds all work documents, the single stateful file `status.yaml`, and git worktrees for the involved code repositories. The directory name carries a creation-date prefix (e.g., `space/20261001-user-login/`), so sorting by name is equivalent to sorting by creation time. The git branch inside the worktree has no date prefix — only the directory name does.
@@ -10,7 +10,7 @@ Every requirement in Tack gets its own workspace — a flat directory under `spa
 
 After running `/tack` in an empty directory, the complete project space structure looks like this:
 
-```
+```text
 my-project/
 ├── AGENTS.md            # Resident manual: core constraints + project info
 │                        # (name/keywords/repo mapping/work list)

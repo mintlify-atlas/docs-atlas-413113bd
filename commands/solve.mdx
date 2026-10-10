@@ -1,7 +1,7 @@
 ---
-title: "Solve: Guided File-by-File Conflict Resolution"
+title: "Solve: Guided File-by-File Git Conflict Resolution"
 sidebarTitle: "Solve"
-description: "Walk through every conflicting file sequentially, see both sides with context and an explanation, then decide the resolution — Tack never picks a side silently."
+description: "Walk through each conflicting file, see both sides with context and an explanation, and decide the resolution — Tack never picks a side silently."
 ---
 
 Tack's `solve` command provides a structured, interactive path through merge and rebase conflicts. It locates every conflicting file across all workspace repositories, presents both sides of each conflict with surrounding context and an explanation of why the conflict occurred, and then applies exactly the resolution you choose. `solve` is invoked automatically when [`merge`](/commands/merge) detects a conflict, and can also be triggered directly whenever you have unmerged paths in your working tree.

@@ -1,7 +1,7 @@
 ---
 title: "Testing Workflow: Unit Tests, System Tests, and Scripts"
 sidebarTitle: "Testing"
-description: "Tack's testing workflow covers unit test review, system testing, and script execution as on-demand commands that don't block the main development chain — trigger them only when testing is the explicit goal."
+description: "Three on-demand testing commands — testcode, test, and run — plus an independent testing workflow when testing itself is the primary goal of the task."
 ---
 
 Testing in Tack is treated as on-demand — triggered explicitly by the user, never blocking the main development chain. The three testing commands (`testcode`, `test`, `run`) are available inside any development workflow run, but they also form their own independent `testing` workflow when testing itself is the primary goal of the task. This page covers both cases: how the testing workflow runs as a standalone state machine and how the three commands behave individually.
@@ -17,7 +17,7 @@ The testing workflow activates when Tack detects any of these intents:
 
 ## State Transitions
 
-```
+```text
 initialized → test-planning → testing → verifying → completed
                        \          \          \
                         └──────── blocked (test environment unavailable / unclear requirements)
@@ -129,7 +129,7 @@ When you enter the `testing` workflow from inside the `development` workflow (e.
 
 Any test or data script that requires credentials must follow this layout:
 
-```
+```text
 space/20261001-user-login/
 └── run/
     ├── run.md          # Execution checklist (committed)

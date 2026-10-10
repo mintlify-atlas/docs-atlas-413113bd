@@ -1,7 +1,7 @@
 ---
-title: "Development Workflow: From Requirement to Merge"
+title: "Development Workflow: Full R&D Chain, Spec to Close"
 sidebarTitle: "Development"
-description: "Tack's development workflow is the primary state machine covering the full R&D lifecycle — spec → plan → code → commit → push → merge → close — with automatic state tracking in status.yaml."
+description: "Complete R&D state machine: spec, plan, code, commit, push, merge, close. On-demand test and review commands never block the delivery chain."
 ---
 
 Tack's development workflow (`development`) is the core state machine for software R&D, covering the complete lifecycle from requirement intake to delivery. It orchestrates all major dev commands in sequence, tracks progress in `status.yaml` at every stage, and separates the mandatory delivery chain from on-demand commands — so testing, code review, and release checks never block a commit or merge unless you ask for them.
@@ -10,15 +10,15 @@ Tack's development workflow (`development`) is the core state machine for softwa
 
 The development workflow activates when Tack detects any of these intents:
 
-- `development workflow`, `development`, `/dev`
-- `requirement development`, `feature development`
+- `development workflow`, `development`, `requirement development`, `feature development`
+- Short form: `dev` (or `/dev`)
 - Chinese: `开发工作流`, `需求开发`, `功能开发`
 
 ## State Transitions
 
 The `status` field in `$work/status.yaml` follows this state machine under the development workflow:
 
-```
+```text
 initialized → planning → developing → reviewing → merged → completed
                    \          \           \
                     └──────── blocked (any stage, when input/dependency is missing)

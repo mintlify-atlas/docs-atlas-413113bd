@@ -1,7 +1,7 @@
 ---
-title: "Get Started with Tack Harness in 5 Steps"
+title: "Tack Harness Quickstart: From Install to First Workspace"
 sidebarTitle: "Quickstart"
-description: "Complete walkthrough of the full R&D chain — from installing the skill to closing a workspace — illustrated with a concrete 'user login' requirement example."
+description: "Install Tack Harness, init a project space, then run spec, plan, code, merge, and close — a complete R&D chain walkthrough with a user-login example."
 ---
 
 This guide walks you through the complete Tack Harness workflow using a "user login" feature as a running example. By the end you will have installed the skill, initialized a project space, created and analyzed a requirement, written code in an isolated worktree, and closed the workspace with automatic experience distillation. The entire chain takes fewer than ten commands.
@@ -16,7 +16,7 @@ Tack Harness is installed as a skill into your AI coding agent. There are two re
 
 In TRAE (or any supported agent), type:
 
-```
+```text
 Install this skill: https://github.com/frcoder-lh/tack-harness
 ```
 
@@ -48,7 +48,7 @@ sh install.sh --agent trae --dry-run # Preview what would be installed
 
 Open an empty directory and run:
 
-```
+```text
 /tack
 ```
 
@@ -62,7 +62,7 @@ Tack Harness detects that no space exists yet and triggers `init` automatically.
 
 After initialization the directory looks like this:
 
-```
+```text
 my-project/
 ├── AGENTS.md            # Resident manual: core constraints + project info
 ├── harness/             # Development process definitions (customizable, never overwritten by upgrades)
@@ -86,7 +86,7 @@ Git operations on `harness/`, `wiki/`, `AGENTS.md`, and files under `space/` are
 
 ### Create a workspace for the requirement
 
-```
+```text
 /tack work user-login
 ```
 
@@ -103,7 +103,7 @@ Git operations on `harness/`, `wiki/`, `AGENTS.md`, and files under `space/` are
 
 After `work` completes, add your raw requirement material:
 
-```
+```text
 # Edit space/20261001-user-login/input.md
 # Paste PRD excerpts, acceptance criteria, links to design docs,
 # and suggested analysis entry points for the AI.
@@ -133,7 +133,7 @@ For complex tasks, delegates `code-architect` subagents to produce at least two 
 - Decision records for all technical choices made in this stage
 
 ```bash
-/tack tech-design        # Optional — produces tech-design.md from the technical template
+/tack tech-design        # Produces tech-design.md from the technical template
 ```
 
 <Note>

@@ -13,6 +13,9 @@ The `work` command is the entry point for all workspace lifecycle management in 
 # Aliases:
 /tack w                          # short form
 /tack 工作区                     # Chinese trigger
+/tack 新建工作区                 # Chinese trigger
+/tack 切换工作区                 # Chinese trigger
+/tack 分支合并                   # Chinese trigger (branch-op)
 /tack new workspace              # natural language
 /tack switch workspace           # natural language
 /tack merge branches             # natural language (branch-op)
@@ -104,12 +107,15 @@ space/<YYYYMMDD>-<branch>/
   <Step title="Confirm Repositories">
     Runs `git fetch origin --prune` in each `$root/repo/` repository and checks whether both A and B exist (remote-first, local fallback). Presents a multi-select list when more than one repo qualifies.
   </Step>
+  <Step title="Generate and Confirm Workspace Name">
+    After the operation and branches are clear, generates 3 English kebab-case workspace name candidates (e.g. `bop-<a>-to-<b>`, replacing `/` with `-` in branch names). The user picks one or types their own, then confirms the final name.
+  </Step>
   <Step title="Create Skeleton (no default worktree)">
     Executes:
     ```bash
     sh $root/harness/script/work.sh --no-worktree $root <branch>
     ```
-    Produces only `status.yaml`, `input.md`, `wiki/`, and an empty `repo/` placeholder.
+    Produces only `status.yaml`, `input.md`, `wiki/`, and an empty `repo/` placeholder. The script outputs `WORKSPACE=<dir-name>` — all subsequent steps use this value.
   </Step>
   <Step title="Prepare Temporary Branches and Worktrees">
     For each confirmed repo:
@@ -117,10 +123,13 @@ space/<YYYYMMDD>-<branch>/
     sh $root/harness/script/branch-op.sh prepare $root space/<WORKSPACE> \
       <repo> <op> <A> <B>
     ```
-    Creates timestamped temporary branches (`A-<ts>`, `B-<ts>`), then creates a worktree for the working branch.
+    Creates timestamped temporary branches (`A-<ts>`, `B-<ts>`), then creates a worktree for the working branch (merge takes `B-ts`, rebase takes `A-ts`).
   </Step>
   <Step title="Register and Switch Context">
     Registers the workspace in `AGENTS.md` and writes `status.yaml` fields: `workflow: branch-op`, `status: preparing`, `services`, and the full `branch_op` block (temp branch names, `pushed: false` flags).
+  </Step>
+  <Step title="Skip Regular Opening Actions">
+    Does not emit a knowledge roster or prompt for `input.md`/`spec`. Once the workspace is registered it proceeds directly into the branch-op workflow's integrate stage.
   </Step>
 </Steps>
 
@@ -167,10 +176,10 @@ space/<YYYYMMDD>-<branch>/
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Write Requirements" icon="pencil">
+  <Card title="Write Requirements" icon="pencil" href="/commands/spec">
     Write raw requirements into `$work/input.md`, then run `spec` to produce a structured specification.
   </Card>
-  <Card title="Branch-Op Integration" icon="code-branch">
+  <Card title="Branch-Op Integration" icon="code-branch" href="/workflow/branch-operations">
     Run `branch-op.sh integrate` to start the integration, use `solve` on conflicts, then `push` and `close`.
   </Card>
 </CardGroup>

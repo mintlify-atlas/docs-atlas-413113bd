@@ -1,7 +1,7 @@
 ---
-title: "Installing Tack Harness on Windows"
+title: "Tack Harness on Windows: Git Bash, PowerShell, and run.ps1"
 sidebarTitle: "Windows Setup"
-description: "Step-by-step guide to installing Tack Harness on Windows using Git Bash or PowerShell, including the run.ps1 launcher, SSL workaround, and symlink handling."
+description: "Install Tack Harness on Windows via Git Bash or PowerShell — covers run.ps1, SSL revocation workaround, symlink privilege requirements, and CRLF pitfalls."
 ---
 
 Tack Harness scripts are written in POSIX `sh`. On Windows they run via the `bash.exe` bundled with Git for Windows — not WSL, not the system `bash`. The `run.ps1` launcher handles locating the correct `bash.exe` automatically, so once you have Git for Windows installed the framework operates the same as on macOS or Linux. This page covers Windows-specific prerequisites, install commands, and the common issues you may encounter.
@@ -56,7 +56,7 @@ If you prefer to stay in PowerShell, call Git for Windows' `bash.exe` explicitly
 
 When using the one-line curl install on Windows Git Bash, `curl` may fail with:
 
-```
+```text
 curl: (35) schannel: next InitializeSecurityContext failed: CRYPT_E_NO_REVOCATION_CHECK
 ```
 
@@ -80,7 +80,7 @@ After installation, every harness shell script on Windows is invoked through `ha
 
 The launcher does the following:
 
-1. **Locates Git for Windows `bash.exe`** — checks common install directories (`Program Files\Git\bin\bash.exe`, `LOCALAPPDATA\Programs\Git\bin\bash.exe`), then the Windows registry keys `HKLM\SOFTWARE\GitForWindows` and `HKCU\SOFTWARE\GitForWindows`, and finally PATH entries that pass an `MSYSTEM` probe (to skip WSL stubs in `System32` and `WindowsApps`).
+1. **Locates Git for Windows `bash.exe`** — checks common install directories (`Program Files\Git\bin\bash.exe`, `Program Files (x86)\Git\bin\bash.exe`, `LOCALAPPDATA\Programs\Git\bin\bash.exe`), then the Windows registry keys `HKLM\SOFTWARE\GitForWindows`, `HKCU\SOFTWARE\GitForWindows`, and `HKLM\SOFTWARE\WOW6432Node\GitForWindows`, and finally PATH entries that pass an `MSYSTEM` probe (to skip WSL stubs in `System32` and `WindowsApps`).
 2. **Installs Git for Windows via `winget`** if `bash.exe` is not found on first run.
 3. **Normalizes path arguments** — converts backslashes to forward slashes so POSIX scripts receive valid paths (e.g. `D:\Code\my-space` becomes `D:/Code/my-space`).
 4. **Sets `LANG` and `LC_ALL` to `C.UTF-8`** to ensure consistent output encoding.

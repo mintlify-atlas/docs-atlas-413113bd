@@ -1,8 +1,12 @@
 ---
 title: "Code Review: Function-by-Function Diff Analysis Report"
 sidebarTitle: "Code Review"
-description: "Uses plan/tech-design as spec and a three-dot diff as facts. Delegates three parallel reviewer perspectives. Produces $work/code-review.md with per-finding severity and a merge recommendation."
+description: "Function-level diff review using plan/tech-design as spec. Sub-agents produce code-review.md with severity-ranked findings and a merge recommendation."
 ---
+
+<Warning>
+  **`code-review` is on-demand only.** It is not a mandatory step in the development chain. After `code` completes you can commit, push, and merge directly. Trigger this command only when you want an independent, archivable review report before merging.
+</Warning>
 
 The `code-review` command produces an independent, archivable code review report by combining the `plan.md`/`tech-design.md` spec with the three-dot diff against the target branch. It works at function-and-method granularity, assessing not just what changed but whether the changes are correct, complete, and safe. For large, multi-module changes, it delegates three parallel `code-reviewer` sub-agents across three perspectives — spec compliance, bugs and correctness, and conventions and security. The result is `$work/code-review.md`, a report you can share with the team, archive, and reference during the `merge` gate check.
 

@@ -1,8 +1,12 @@
 ---
 title: "Release Check: Pre-Release Go-Live Checklist from Diff"
 sidebarTitle: "Release Check"
-description: "Translates every environment-related change in the diff into executable go-live checklist items — migration statements, config templates, API permission requests, and middleware resource requests."
+description: "Translates diff changes into go-live checklist items: migration statements, config templates, permission requests, and middleware provisioning steps."
 ---
+
+<Warning>
+  **`release-check` is on-demand only.** It is not a mandatory step in the development chain. After `code` completes you can commit, push, and merge without running this command. Trigger it only when you want to prepare a pre-release go-live checklist.
+</Warning>
 
 The `release-check` command answers the question "what do we need to prepare before going live?" It reads the same three-dot diff used by `code-review` and systematically identifies every environment-related change — database schema changes, config key additions or modifications, new external API calls requiring permissions, and new middleware resources that need to be provisioned. Each identified item is translated into a concrete, executable action: a DDL statement, a config template, a permission request item, or a resource provisioning request. The result is `$work/release-check.md`, a checklist you work through before flipping the switch.
 

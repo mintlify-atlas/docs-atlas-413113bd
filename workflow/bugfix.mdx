@@ -1,7 +1,7 @@
 ---
 title: "Bugfix Workflow: Diagnose, Fix, and Trace Defect Origin"
 sidebarTitle: "Bugfix"
-description: "Tack's bugfix workflow covers reproducing, diagnosing, fixing, and verifying defects, with automated defect origin tracing via git-bug-trace that links bugs to the MR that introduced them."
+description: "Reproduce, diagnose, fix, and verify defects. git-bug-trace links every bug to its introducing commit and the MR that merged it into the main branch."
 ---
 
 The bugfix workflow (`bugfix`) is Tack's dedicated state machine for defect repair and production issue diagnosis. It activates when a bug or error is reported, enforces a reproduce-before-fix discipline, and — once the defective code line is located — automatically traces the defect to its introducing commit, author, requirement ticket, and the MR that merged it into the main branch. Results are written to the `bug_origin` block in `status.yaml`, making defect origin a first-class fact in every fix workspace.
@@ -18,7 +18,7 @@ The bugfix workflow activates when Tack detects any of these intents:
 
 ## State Transitions
 
-```
+```text
 initialized → reproducing → diagnosing → fixing → verifying → completed
                     \           \          \         \
                      └──────── blocked (cannot reproduce / missing info / awaiting dependency)
@@ -70,7 +70,10 @@ Once the defective code line is located during diagnosis, the bugfix workflow ca
 sh harness/script/git-bug-trace.sh <repo> <file> <line> [end-line] [target-branch]
 
 # Example: trace line 87 in auth/login.go, tracing back to main
-sh harness/script/git-bug-trace.sh repo/backend auth/login.go 87 main
+sh harness/script/git-bug-trace.sh repo/backend auth/login.go 87 87 main
+
+# Example: trace a range (lines 87-92), using the default target branch
+sh harness/script/git-bug-trace.sh repo/backend auth/login.go 87 92
 ```
 
 **What it traces:**

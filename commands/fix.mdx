@@ -1,7 +1,7 @@
 ---
 title: "Fix: Keep Spec, Plan, and Code in Sync After Changes"
 sidebarTitle: "Fix"
-description: "Two fix paths: requirement fixes propagate spec → plan → tasks → code; code fixes repair the implementation first, then evaluate whether spec and plan need to follow. Documentation and code never drift."
+description: "Two paths: requirement fixes propagate spec → plan → tasks → code. Code fixes repair the implementation, then sync docs. The four artifacts always agree."
 ---
 
 The `fix` command handles corrections discovered at any point after the planning phase — whether a requirement was misunderstood, needs changing, or the implementation turned out to be incorrect. Rather than allowing documentation and code to drift apart, `fix` enforces a strict consistency rule: `spec.md`, `plan.md`, the `tasks` list in `status.yaml`, and the code in `$work/repo/` must always agree. The command selects the appropriate repair path based on what was found wrong.

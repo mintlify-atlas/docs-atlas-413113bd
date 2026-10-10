@@ -1,7 +1,7 @@
 ---
-title: "Run: Script Execution Manager with Secure Credential Handling"
+title: "Run: Workspace Script Manager with Credential Safety"
 sidebarTitle: "Run"
-description: "On-demand script runner for workspace tasks. Initializes run/ when absent (run.md + gitignored local/), then executes scripts per checklist. Sensitive data always goes in run/local/ — never hardcoded."
+description: "On-demand script runner: creates run/ with run.md and gitignored local/ when absent, then runs scripts in listed order. All credentials stay in local/."
 ---
 
 The `run` command manages script execution for a workspace. It auto-detects its mode: when `$work/run/` doesn't exist yet, it initializes the directory skeleton and prompts you to add your scripts and credentials; when `$work/run/run.md` already exists, it loads the script checklist and executes each entry in order. Sensitive data such as API tokens, database credentials, and account details must always be placed in `run/local/` — a gitignored subdirectory that is never committed. Like all testing and execution commands, `run` is on-demand and does not block commits or merges.

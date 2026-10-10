@@ -1,7 +1,7 @@
 ---
-title: "Branch Operations and Merge Conflict Resolution"
+title: "Branch Operations and Merge Conflict Resolution in Tack"
 sidebarTitle: "Branch Operations"
-description: "Tack's branch-op and merge-conflict workflows handle branch integration and guided conflict resolution, using temporary branch isolation so original branches are never touched directly."
+description: "branch-op integrates two branches via temporary isolation; merge-conflict resolves conflicts file by file. Both use solve and never silently pick a side."
 ---
 
 Tack provides two workflows for Git branch management: `branch-op` for planned branch integrations between two known branches (merge or rebase), and `merge-conflict` for resolving conflicts that arise during development merges. Both workflows use the `solve` command to guide file-by-file conflict resolution — Tack never silently picks a side on a conflict.
@@ -14,7 +14,7 @@ The `branch-op` workflow handles the case where you want to integrate two existi
 
 ### Trigger Words
 
-- `branch operation`, `branch ops`, `/bop`
+- `branch-op`, `branch operation`, `branch ops`, `/bop`
 - Chinese: `分支操作`
 
 The `work` command routes to `branch-op` automatically when the input clearly specifies two branches and an integration operation (merge/rebase). A plain "merge" during active development routes to the `development` workflow's `merge` command instead.
@@ -23,7 +23,7 @@ The `work` command routes to `branch-op` automatically when the input clearly sp
 
 Branch-op creates **timestamp-suffixed temporary branches** for both the source (A) and target (B) so that original branches are never checked out, committed to, or fast-forwarded directly. The entire operation happens on the temporaries. On success, results are pushed back to the originals; the temporaries are cleaned up at `close`.
 
-```
+```text
 initialized → preparing → integrating → pushing → completed
                               ↕ resolving
                           (conflict: solve →
@@ -131,12 +131,12 @@ The `merge-conflict` workflow handles conflicts that arise during a branch merge
 
 ### Trigger Words
 
-- `merge conflict`, `conflict workflow`, `/mc`
+- `merge-conflict`, `merge conflict`, `conflict workflow`, `/mc`
 - Chinese: `冲突工作流`, `合并冲突`
 
 ### State Transitions
 
-```
+```text
 initialized → fetching → merging → resolving → verifying → pushing → completed
                     \        \          \           \          \
                      └──────── blocked (remote unreachable / business decision needed / build fails)

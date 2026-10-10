@@ -1,7 +1,7 @@
 ---
 title: "Test: System Test Plan from Requirements to Executable Cases"
 sidebarTitle: "Test"
-description: "On-demand system testing that turns a test description into a structured, executable test.md plan. When scripts are needed, they go to run/. Distinct from testcode's unit test coverage goal."
+description: "On-demand system test planner: converts a description into an executable test.md. Scripts land in run/. Does not replace unit-test testcode."
 ---
 
 The `test` command turns your description of what you want to test into a structured, fully actionable system test plan saved as `$work/test.md`. It targets **whole-system functional verification** — end-to-end behaviors, integration scenarios, and acceptance criteria at the feature level — rather than unit test coverage. When the plan calls for automation scripts, `test` initializes `$work/run/` (if it doesn't exist) and places the scripts there. Like all testing commands in Tack Harness, `test` is on-demand and never blocks your ability to commit or merge.

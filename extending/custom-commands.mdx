@@ -1,5 +1,5 @@
 ---
-title: "Adding Custom Commands to Tack Harness"
+title: "Adding Custom Commands to Tack Harness with One File"
 sidebarTitle: "Custom Commands"
 description: "Register new commands in Tack by adding a single Markdown file with YAML frontmatter. The scanner recognizes it instantly with zero skill changes."
 ---
@@ -76,7 +76,7 @@ Every command file must contain exactly four Markdown sections (H2 headings). Th
   </Step>
 
   <Step title="Command Instructions">
-    The numbered steps the AI executes. Each step names its inputs (what to read or ask for), its action (what to run or generate), and its outputs (files created or state changed).
+    The numbered steps the AI executes. Each step names its inputs (what to read or ask for), its action (what to run or generate), and its outputs (files created or state changed). For commands with multiple distinct operating modes, this section may instead be written as a set of `## 模式N：…` subsections — `lint-harness.sh` accepts either form.
 
     ```markdown
     ## 指令内容
@@ -90,18 +90,6 @@ Every command file must contain exactly four Markdown sections (H2 headings). Th
     ```
   </Step>
 
-  <Step title="Framework Auto-commit">
-    Declares any automatic `space.sh commit` the framework performs after this command completes. If the command makes no persistent changes to the harness, write a note stating that no auto-commit is needed.
-
-    ```markdown
-    ## 框架自动提交（无需用户操作）
-
-    - Action: after confirmation, run
-      `sh $root/harness/script/space.sh commit $root "chore: deploy to staging"`
-    - Boundary: follows `harness/rule/git-boundary.md`
-    ```
-  </Step>
-
   <Step title="Post-completion Checklist (Exit Gate)">
     Objective, checkable conditions that must all be true before the command is considered complete. Each item is something that can be verified (a file exists, a script exits 0, a field is set).
 
@@ -111,6 +99,16 @@ Every command file must contain exactly four Markdown sections (H2 headings). Th
     - [ ] Deploy script exited 0
     - [ ] `status.yaml` `current.stage` updated to `deployed`
     - [ ] No uncommitted changes in the worktree
+    ```
+  </Step>
+
+  <Step title="Next Steps Suggestion">
+    The natural next command or action after this one completes. Guides the AI (and the user) to the typical follow-on without requiring the user to know the full command sequence.
+
+    ```markdown
+    ## 下一步建议
+
+    - Run `/tack push` to push the deployed branch to the remote
     ```
   </Step>
 </Steps>
@@ -130,30 +128,31 @@ summary: 一句话说明这个命令的作用
 
 # example 示例命令
 
-> Files starting with `_` are not registered. Rename this file (remove the `_` prefix) to register it.
+> 文件名以 `_` 开头不会被扫描器注册为命令。复制本文件后重命名（去掉 `_` 前缀）即完成新命令注册。
 
 ## 前置准入条件
 
-- Conditions that must be true before the command runs
-- State any gap and stop if a condition is not met
+- 执行命令前必须满足的条件（如：已初始化、某文件存在、工作区干净）
+- 不满足时直接说明缺口并停止，不要跳过
+
+## 不适用场景（可选）
+
+- 列出**不应使用本命令**的典型情形与应改走的命令/工作流
+- 没有明确边界时可删除本章节
 
 ## 指令内容
 
-1. **Step name**
-   - Input: what to read or ask for
-   - Action: what to run or generate
-
-## 框架自动提交（无需用户操作）
-
-- Action: `sh $root/harness/script/space.sh commit $root "chore: <message>"`
+1. **步骤名称**
+   - 输入: 需要从用户或上下文中获取什么
+   - 动作: 执行什么操作（读哪个文件、跑哪个脚本、生成什么产物）
 
 ## 后置完成检验
 
-- [ ] Objective, checkable completion condition
+- [ ] 可客观检查的完成条件（文件存在 / 字段已填 / 脚本退出码为 0）
 
 ## 下一步建议
 
-- The natural next command after this one
+- 完成后自然衔接的下一条命令
 ```
 
 ## Creating a Command with `/tack record`
@@ -203,7 +202,7 @@ sh harness/script/lint-harness.sh harness
     | Unclosed frontmatter | Opening `---` has no matching closing `---` |
     | Missing required field | `command`, `triggers`, or `summary` absent |
     | Name/filename mismatch | `command: foo` in a file named `bar.md` |
-    | Four sections missing | One or more of the required H2 sections is absent |
+    | Four sections missing | One or more of `## 前置准入条件`, `## 指令内容` (or `## 模式N：…`), `## 后置完成检验`, `## 下一步建议` is absent |
     | Route token conflict | A `name`, `short`, or trigger word already belongs to another command or workflow |
   </Tab>
   <Tab title="Warnings (informational)">
