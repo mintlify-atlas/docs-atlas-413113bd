@@ -1,0 +1,206 @@
+---
+title: "Core Concepts: Commands, Workflows, and Workspace Model"
+sidebarTitle: "Concepts"
+description: "Explore the three pillars of Tack Harness — runtime command routing via scan-routes, workflow state machines, and the per-requirement workspace directory model."
+---
+
+Tack Harness is built on three interlocking ideas: a runtime route table assembled from Markdown frontmatter, a set of workflow state machines that orchestrate commands from start to finish, and a flat workspace directory created per requirement that holds every artifact and the single stateful file tracking progress. Understanding these three pillars explains why adding one file is enough to register a new capability, why the AI always knows what stage it is in, and why code changes in one requirement can never contaminate another.
+
+---
+
+## Command Routing
+
+Commands in Tack Harness are not compiled into the skill. They are plain Markdown files whose YAML frontmatter declares all the routing information the framework needs. At runtime, `harness/script/scan-routes.sh` reads those frontmatter blocks from every eligible file and assembles a complete route table in a single `awk` pass — no code changes required when you add or modify a command.
+
+### Frontmatter Schema
+
+Every command file declares four fields:
+
+```yaml
+---
+command: spec
+short: sp
+triggers: requirement planning, overall design, spec
+summary: Produce the requirement planning document
+---
+```
+
+| Field | Required | Purpose |
+|---|---|---|
+| `command` | Yes | The canonical command name used in routing |
+| `short` | No | A short-form alias (e.g., `sp` for `spec`) |
+| `triggers` | Yes | Comma-separated Chinese and English trigger phrases for natural-language resolution |
+| `summary` | Yes | One-sentence description shown in `/tack help` output |
+
+Workflow files use `workflow:` instead of `command:`, and agent files use `agent:`.
+
+### File Locations and Naming Rules
+
+| Location | Type | Participates in routing? |
+|---|---|---|
+| `harness/workflow/*.md` | Workflow definitions | Yes — intent recognition |
+| `harness/cmd/base/*.md` | Project-space commands | Yes — command resolution |
+| `harness/cmd/dev/*.md` | Requirement-development commands | Yes — command resolution |
+| `harness/cmd/git/*.md` | Git commands | Yes — command resolution |
+| `harness/cmd/<custom>/*.md` | User-defined command groups | Yes — command resolution |
+| `harness/agents/*.md` | Delegatable roles | Discovery only — never in `resolve` |
+| Any file starting with `_` | Private files | Never routed |
+
+<Note>
+Files starting with `_` are intentionally excluded from routing. Use this convention for draft commands or internal helper files that should not be discoverable by the agent.
+</Note>
+
+### How `scan-routes.sh` Works
+
+The script accepts five modes:
+
+```bash
+# Full route table: workflows + commands + delegatable roles
+sh harness/script/scan-routes.sh list      harness
+
+# Workflows only (for intent recognition)
+sh harness/script/scan-routes.sh workflows harness
+
+# Commands only
+sh harness/script/scan-routes.sh commands  harness
+
+# Delegatable roles only (agents/ never participates in resolve)
+sh harness/script/scan-routes.sh agents    harness
+
+# Resolve a trigger phrase to a unique command or workflow
+sh harness/script/scan-routes.sh resolve   harness "requirement planning"
+```
+
+`resolve` exits with code `0` on a unique hit, `1` on no hit, and `2` on multiple hits — enabling the optional Hook acceleration layer to inject the exact command body and status snapshot before the AI even asks.
+
+The scanner processes `workflow/`, then `cmd/base/`, `cmd/dev/`, `cmd/git/`, then any custom groups in alphabetical order, then `agents/`. This fixed ordering ensures a stable, deterministic route table.
+
+---
+
+## Workflow State Machine
+
+A workflow is a **state machine plus command orchestration**. When the agent receives an instruction, it confirms the current workspace, identifies which workflow the intent belongs to, and advances commands according to the state transitions defined in the workflow file.
+
+### The Five Workflows
+
+| Workflow | Triggers | State Transitions |
+|---|---|---|
+| `development` | development workflow / requirement development / feature development / `dev` | `initialized → planning → developing → reviewing → merged → completed` |
+| `testing` | testing workflow / add tests / testing task / `tst` | `initialized → test-planning → testing → verifying → completed` |
+| `bugfix` | fix bug / fix defect / troubleshoot / `bug` | `initialized → reproducing → diagnosing → fixing → verifying → completed` |
+| `merge-conflict` | merge conflict / conflict workflow / `mc` | `initialized → fetching → merging → resolving → verifying → pushing → completed` |
+| `branch-op` | branch operation / `bop` | `initialized → preparing → integrating → pushing → completed` |
+
+<Info>
+Any blocked stage may enter the `blocked` state. The blocking reason is recorded in `status.yaml` under `current.next`, and the workflow returns to the original state once the blocker is resolved. For `branch-op`, a conflict during `integrating` temporarily enters a `resolving` sub-state before returning to `integrating`.
+</Info>
+
+### The Main Development Chain
+
+The `development` workflow orchestrates the primary R&D chain. The diagram below shows how commands map to state transitions, and which commands are on-demand (they do not occupy a state slot or block the main chain):
+
+```
+/tack init
+  └─→ /tack work <requirement>        [initialized]
+        └─→ /tack spec                [planning]
+              └─→ /tack plan          [planning]
+                    └─→ /tack tech-design  [planning]
+                          └─→ /tack code  [developing]
+                                └─→ /tack fetch
+                                      └─→ /tack commit
+                                            └─→ /tack push
+                                                  └─→ /tack merge   [reviewing → merged]
+                                                        └─→ /tack close  [completed]
+
+On demand (no state slot, never block commit/merge):
+  /tack testcode    unit-test consistency review
+  /tack test        system test plan
+  /tack run         execute scripts
+```
+
+---
+
+## Workspace Model
+
+Every requirement gets its own isolated workspace at `space/<YYYYMMDD>-<branch>/`. The date prefix means that sorting the `space/` directory by name is equivalent to sorting by creation time. The `<branch>` suffix is the Git branch name checked out in the worktrees — without the date prefix.
+
+### Workspace Files
+
+| File / Directory | Created When | Purpose |
+|---|---|---|
+| `status.yaml` | Workspace creation (`work`) | Properties + logs + todos: records the task in progress, its progress, and the next step; the single stateful file |
+| `input.md` | Workspace creation (`work`) | Raw requirement, reference links, requirement understanding, and suggested analysis chain |
+| `spec.md` | `/tack spec` | Requirement planning (overall design): the construction blueprint and acceptance contract |
+| `plan.md` | `/tack plan` | Development plan: detailed design, option comparison for complex tasks, and task list |
+| `tech-design.md` | `/tack tech-design` | Technical review document |
+| `test.md` | `/tack test` (on demand) | System test plan — actionable and executable; distinct from `testcode` (unit tests/coverage) |
+| `run/` | `/tack test` / `/tack run` (on demand) | Test/execution scripts plus `run.md` execution guide; `run/local/` holds sensitive data (gitignored) |
+| `wiki/` | `work` / `ask` | Workspace-level code analysis documents (`<repo>-analysis.md`) |
+| `repo/<name>/` | `work` | The Git worktree — the **only** writable code area |
+
+<Warning>
+`repo/<name>/` inside a workspace is the only location where you should ever run Git commands (`commit`, `push`, etc.). The main `repo/` directory at the project root is a read-only baseline and must never be written to directly.
+</Warning>
+
+---
+
+## The `status.yaml` File
+
+`status.yaml` is the **single stateful file** in every workspace. It tracks:
+
+- **`status`** — current stage in the workflow state machine (e.g., `planning`, `developing`, `reviewing`)
+- **`current`** — active stage, task, and `next` action (with `updated_at` auto-refreshed by `work-status.sh`)
+- **`tasks[]`** — the task list generated by `plan`, each with a `status` field (`pending` / `in_progress` / `done` / `blocked`) and a `deps` list for topological scheduling
+- **`guidance[]`** — user guidance collected during the task as raw facts; crystallized into `workflow`/`cmd`/`rule` entries at `close`
+- **`progress`** — boolean flags for completed stages (`spec`, `plan`, `tech-design`, `code`, etc.)
+- **`branch_op`** — present only in branch-operation workspaces; holds temporary branch names and `pushed` flags per repository
+
+### The Guidance Closed Loop
+
+Whenever you guide, correct, or add an agreement to the AI's approach during a task, the raw fact is automatically appended to `guidance` with a `raw` marker. No changes to the harness are made at this point. At `close`, all `raw` guidance entries are reviewed and crystallized into `workflow`, `cmd`, or `rule` entries (marked `distilled`), with each landing point verified by `check-guidance.sh` before the workspace is finalized.
+
+```
+User guidance → guidance[].raw (status.yaml)
+                        ↓ (at close)
+          workflow / cmd / rule entry (distilled)
+                        ↓
+          check-guidance.sh verifies landing file exists
+```
+
+This "collect → crystallize → verify" loop is how Tack Harness improves its own harness from real project experience without any manual process.
+
+---
+
+## Git Dual Boundary
+
+Tack Harness enforces a strict two-zone Git model:
+
+<CardGroup cols={2}>
+  <Card title="Space-root repository" icon="lock">
+    Git operations on `harness/`, `wiki/`, `AGENTS.md`, and all documents under `space/` are committed **automatically by the framework** at each command stage using `space.sh commit`. Users never operate this repository directly.
+  </Card>
+  <Card title="Workspace code repositories" icon="code-branch">
+    User Git commands (`commit`, `push`, `fetch`, `merge`, etc.) apply **only** inside `space/<YYYYMMDD>-<branch>/repo/<name>/` worktrees. These are the only paths where user Git operations are valid.
+  </Card>
+</CardGroup>
+
+The `git-boundary.md` rule and the optional `PreToolUse` Hook both observe this boundary. If `TACK_HOOK_ENFORCE=1` is set, violations are denied; by default the Hook logs only and never intercepts.
+
+---
+
+## Wiki: Shared Knowledge
+
+The `wiki/` directory at the project root holds knowledge that is **requirement-agnostic** and reusable across all workspaces. It is materialized on demand — never populated with AI-invented content.
+
+| File | Purpose |
+|---|---|
+| `wiki/manifest.md` | Service overview table, service details (name, repo, responsibilities, dependencies), and environment facts (tenants, accounts, middleware) |
+| `wiki/code-understanding.md` | Repository overview, business-term-to-code-search map, interface-to-business-scenario map, and an index of workspace analysis documents |
+| `wiki/business-understanding.md` | Business line overview, project background, core concept glossary, business flows, and links to source documents |
+| `wiki/decisions.md` | Technical decisions and engineering conventions — each entry carries its source and contradictions keep their evolution history |
+
+<Tip>
+Wiki files record only code-external facts, navigation anchors, business background, and sourced decisions. Volatile implementation details (call chains, internal logic) are never stored in `wiki/` — they belong in workspace-level `$work/wiki/<repo>-analysis.md` documents generated by `ask`.
+</Tip>
+
+When context is needed, the agent follows a three-tier fallback: `$root/wiki/` (cross-workspace consensus) → `$work/wiki/` (workspace-level analysis, check freshness against base commit) → direct code read (always the ultimate source of truth).

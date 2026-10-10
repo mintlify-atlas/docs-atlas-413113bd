@@ -1,0 +1,140 @@
+---
+title: "Installing Tack Harness on Windows"
+sidebarTitle: "Windows Setup"
+description: "Step-by-step guide to installing Tack Harness on Windows using Git Bash or PowerShell, including the run.ps1 launcher, SSL workaround, and symlink handling."
+---
+
+Tack Harness scripts are written in POSIX `sh`. On Windows they run via the `bash.exe` bundled with Git for Windows — not WSL, not the system `bash`. The `run.ps1` launcher handles locating the correct `bash.exe` automatically, so once you have Git for Windows installed the framework operates the same as on macOS or Linux. This page covers Windows-specific prerequisites, install commands, and the common issues you may encounter.
+
+## Prerequisites
+
+Git for Windows must be installed before running any Tack Harness script. You can download it from [git-scm.com/download/win](https://git-scm.com/download/win).
+
+<Note>
+  If Git for Windows is not present when a harness script first runs, the `run.ps1` launcher will attempt to install it automatically via `winget`. A UAC prompt may appear. On headless or non-elevated sessions where `winget` is unavailable, the launcher prints the manual download URL and exits — install Git for Windows manually and retry.
+</Note>
+
+## Installing from Git Bash
+
+The recommended approach on Windows is to open the **Git Bash** terminal (shipped with Git for Windows) and run `install.sh` directly:
+
+```bash
+# Run these commands in the Git Bash terminal
+sh install.sh --agent trae       # TRAE international edition
+sh install.sh --agent trae-cn    # TRAE China edition
+sh install.sh --agent cursor     # Cursor
+sh install.sh --list             # Show all supported agent presets
+sh install.sh --agent trae --dry-run  # Preview without installing
+```
+
+Git Bash is available from the Start menu after installing Git for Windows, or by right-clicking in any folder and selecting **Git Bash Here**.
+
+## Installing from PowerShell
+
+If you prefer to stay in PowerShell, call Git for Windows' `bash.exe` explicitly with the full path to the install script:
+
+```powershell
+# Adjust the path if Git for Windows is installed elsewhere
+& "C:\Program Files\Git\bin\bash.exe" install.sh --agent trae
+```
+
+```powershell
+# TRAE China edition
+& "C:\Program Files\Git\bin\bash.exe" install.sh --agent trae-cn
+```
+
+```powershell
+# Install for multiple agents at once
+& "C:\Program Files\Git\bin\bash.exe" install.sh --agent trae,cursor
+```
+
+<Warning>
+  Do **not** use the bare `bash` command from PowerShell's PATH. On Windows 10/11 it often resolves to `C:\Windows\System32\bash.exe`, which is the WSL launcher. The WSL launcher cannot interpret Windows drive paths (e.g. `D:/Code/...`) and will fail with a confusing exit code 127. Always invoke `bash.exe` by its full path from the Git for Windows installation, or use the `run.ps1` launcher described below — it applies the same MSYSTEM probe internally to guarantee the correct binary is used.
+</Warning>
+
+## SSL Certificate Workaround
+
+When using the one-line curl install on Windows Git Bash, `curl` may fail with:
+
+```
+curl: (35) schannel: next InitializeSecurityContext failed: CRYPT_E_NO_REVOCATION_CHECK
+```
+
+This happens because the schannel TLS backend cannot reach the certificate revocation service on some corporate or restricted networks. Add `--ssl-no-revoke` to bypass the revocation check:
+
+```bash
+curl -fsSL --ssl-no-revoke https://raw.githubusercontent.com/frcoder-lh/tack-harness/master/install.sh | sh -s
+```
+
+To target a specific agent:
+
+```bash
+curl -fsSL --ssl-no-revoke https://raw.githubusercontent.com/frcoder-lh/tack-harness/master/install.sh | sh -s -- --agent trae
+```
+
+If `curl` continues to fail, fall back to the clone-and-install method — clone the repository in Git Bash and run `sh install.sh` directly without any network calls from the script itself.
+
+## The run.ps1 Launcher
+
+After installation, every harness shell script on Windows is invoked through `harness/script/run.ps1`. You never need to call it directly — commands are routed through it automatically when the agent detects a Windows environment.
+
+The launcher does the following:
+
+1. **Locates Git for Windows `bash.exe`** — checks common install directories (`Program Files\Git\bin\bash.exe`, `LOCALAPPDATA\Programs\Git\bin\bash.exe`), then the Windows registry keys `HKLM\SOFTWARE\GitForWindows` and `HKCU\SOFTWARE\GitForWindows`, and finally PATH entries that pass an `MSYSTEM` probe (to skip WSL stubs in `System32` and `WindowsApps`).
+2. **Installs Git for Windows via `winget`** if `bash.exe` is not found on first run.
+3. **Normalizes path arguments** — converts backslashes to forward slashes so POSIX scripts receive valid paths (e.g. `D:\Code\my-space` becomes `D:/Code/my-space`).
+4. **Sets `LANG` and `LC_ALL` to `C.UTF-8`** to ensure consistent output encoding.
+5. **Passes the exit code through** unchanged so callers can rely on it.
+
+The launcher is invoked like this (for reference — commands call it for you):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File run.ps1 <script-name> [args...]
+```
+
+```powershell
+# Examples of how commands use the launcher internally:
+powershell -ExecutionPolicy Bypass -File "$root\harness\script\run.ps1" scan-routes list "$root/harness"
+powershell -ExecutionPolicy Bypass -File "$root\harness\script\run.ps1" init-tack D:/Code/AI/my-space
+```
+
+## Symlinks on Windows
+
+Git worktrees require symlink support. On Windows, symlinks are only available to accounts with the **Create symbolic links** privilege, which requires either Developer Mode or a local administrator granting the `SeCreateSymbolicLinkPrivilege`.
+
+If symlinks are unavailable, the `init` command automatically falls back to **cloning** the repository into the workspace instead of symlinking it. This has the same isolation properties — code changes stay in the workspace worktree, and the main `repo/` remains the read-only baseline.
+
+<Tip>
+  Enabling Windows Developer Mode (Settings → Update & Security → For developers → Developer Mode) grants symlink creation to all users without requiring administrator privileges per session. This is the simplest way to unlock full worktree functionality.
+</Tip>
+
+## PowerShell Output Noise
+
+PowerShell wraps external program stderr as Error records. The following outputs appear as errors in PowerShell but are **not failure signals** — judge success by the exit code and expected artifacts (such as git ref update lines), not by these messages:
+
+- `PSSecurityException` / `UnauthorizedAccess` from PowerShell profile loading (execution policy blocks the profile, not the bash invocation itself)
+- Git's `LF will be replaced by CRLF the next time Git touches it` warning
+- Remote banners and trace info from `git push`/`git pull` success (shown as `NativeCommandError` under PowerShell 5)
+
+## Line Endings
+
+The harness `.gitattributes` declares `*.sh text eol=lf` and `*.md text eol=lf`. If you edit harness script or Markdown files in a Windows editor that writes CRLF, the files will show a full dirty diff in Git and `.sh` scripts may fail at runtime. After editing, verify line endings with:
+
+```bash
+file harness/script/my-script.sh   # should report "POSIX shell script, ASCII text"
+```
+
+If CRLF is introduced, fix it in Git Bash with:
+
+```bash
+sed -i 's/\r$//' harness/script/my-script.sh
+```
+
+<CardGroup cols={2}>
+  <Card title="Installation Overview" icon="download" href="/installation/overview">
+    All four install methods, supported agents, and install script flags.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Initialize a workspace and run your first requirement end-to-end.
+  </Card>
+</CardGroup>

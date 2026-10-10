@@ -1,0 +1,240 @@
+---
+title: "Self-Evolution: Record, Evolve, and Learn from Outside"
+sidebarTitle: "Self-Evolution"
+description: "Tack crystallizes experience into reusable commands, workflows, and rules through three complementary paths: record, evolution, and study."
+---
+
+Tack's self-evolution system ensures that every task makes the framework smarter. User guidance collected during development is automatically harvested and crystallized into durable harness entries — so the same mistake never has to be corrected twice, and the same capability never has to be explained twice. Experience flows inward from tasks you complete, inward from reviewing your own harness, and outward from learning what other skills and repositories have built.
+
+## Three Evolution Paths
+
+Tack provides three complementary mechanisms for evolving the harness. They work at different moments and from different directions:
+
+<CardGroup cols={2}>
+  <Card title="/tack record" icon="circle-down">
+    **Direction: Inward (on demand)**
+
+    Crystallizes content you explicitly provide, or consumes `guidance` entries collected automatically during a task. You supply the material; `record` decides where it lands and merges it with existing entries when possible.
+  </Card>
+  <Card title="/tack evolution" icon="arrows-rotate">
+    **Direction: Inward (periodic review)**
+
+    Reviews every cmd file and `AGENTS.md` for content that should be distilled into `rule/`, `reference/`, or `script/`. No external material — pure self-review. Shell scripts are corrected on the spot for coding-standard violations; everything else is proposed and confirmed.
+  </Card>
+  <Card title="/tack study" icon="book-open">
+    **Direction: Outward (learning)**
+
+    Reads an external skill, local path, or Git URL. Distills borrowable flows, commands, rules, scripts, templates, and organization patterns. A single confirmation point (unified preview) before any changes commit. Automatically triggers one `evolution` pass after landing.
+  </Card>
+  <Card title="Automatic collection" icon="bolt">
+    **Direction: Continuous (background)**
+
+    At every stage of a task, user corrections, guidance, and supplementary agreements are appended as `raw` facts to the `guidance` list in `status.yaml`. At `/tack close`, they are reviewed and crystallized into harness entries (`distilled`). The `check-guidance.sh` script verifies all landing points.
+  </Card>
+</CardGroup>
+
+## Automatic Guidance Collection
+
+The guidance closed loop is Tack's most passive evolution mechanism. It requires no explicit action from you — it operates continuously in the background of every task.
+
+Whenever you correct the AI's approach, add a constraint, or refine an agreement during a task, the framework appends a `raw` fact to the `guidance` list in `status.yaml`:
+
+```yaml
+# Example guidance entries in status.yaml
+guidance:
+  - id: g001
+    stage: code
+    content: "Always check for existing utility functions before writing new ones"
+    status: raw
+    candidate: "rule/coding-standards.md"
+
+  - id: g002
+    stage: spec
+    content: "For this project, requirement specs must include an explicit rollback plan"
+    status: raw
+    candidate: "cmd/dev/spec.md"
+```
+
+When `/tack close` runs at the end of a task, it reviews every `raw` guidance entry and crystallizes qualifying ones into `workflow/`, `cmd/`, or `rule/` entries. The `check-guidance.sh` script then verifies that every `distilled` entry's landing file still exists — if a landing point is broken, `close` is blocked until it is repaired.
+
+Guidance entries that are one-time process information (not worth reusing) are marked `dismissed` rather than `distilled`.
+
+## `/tack record` — On-Demand Crystallization
+
+`record` is the command that generates commands. Use it whenever you want to crystallize something now, rather than waiting for `close`.
+
+**What it can land:**
+
+| Target | Location | Notes |
+|--------|----------|-------|
+| `agents` | `AGENTS.md` "沉淀约定" section | Resident per-session constraints |
+| `cmd` | `harness/cmd/<group>/` | New or updated commands |
+| `workflow` | `harness/workflow/` | New or updated workflows |
+| `rule` | `harness/rule/` | Coding, security, or business rules |
+| `wiki` | `$root/wiki/` | Facts, anchors, business knowledge, decisions |
+
+**Merge-first behavior:** `record` always scans existing entries before creating anything new. For commands, it reads the full route table and semantically matches the new content against existing commands. If a suitable entry exists, `record` proposes a merge — minimum-edit, no rewriting of unrelated content. Only when no suitable entry exists does it create a new file.
+
+**Creating a new command:** You only need to supply the `command` name. `record` auto-generates the short form, Chinese and English triggers, and a full command body:
+
+```
+/tack record
+> command: deploy-staging
+```
+
+After you review and confirm the draft, the file is written to `harness/cmd/<group>/deploy-staging.md` and `scan-routes.sh` is run to confirm the new command appears in the route table.
+
+**Sourcing from guidance:** If you call `/tack record` without specific content (e.g., "distill recent guidance"), `record` reads `raw` entries from `$work/status.yaml` (or scans all `space/*/status.yaml` if there is no active workspace), lists candidates, and asks which ones to crystallize.
+
+After landing, guidance entries are written back as `distilled` with their landing point path, or `dismissed` if the user skips them:
+
+```bash
+# Written automatically by record/evolution after landing
+sh $root/harness/script/work-status.sh \
+  space/20261001-user-login/status.yaml \
+  guidance g001 distilled harness/rule/coding-standards.md
+```
+
+## `/tack evolution` — Periodic Harness Review
+
+`evolution` is the inward self-review command. Run it periodically — especially after a major feature delivery — to keep the harness lean and accurate.
+
+<Steps>
+  <Step title="Structure self-check (hard gate)">
+    Runs `lint-harness.sh` first. ERRORs (broken frontmatter, name/filename mismatch, missing four sections, route token conflicts) must be fixed before the review continues. WARNs (missing `short`, reference orphans) are included in the candidate table for evaluation.
+
+    ```bash
+    sh harness/script/lint-harness.sh harness
+    # 0 errors, proceed; 1+ errors, fix first
+    ```
+  </Step>
+
+  <Step title="Enumerate and review every instruction file">
+    Reads every file under `harness/cmd/`, `harness/script/*.sh`, and `$root/AGENTS.md` fresh from disk (the AI never trusts its context cache here). For each file, it identifies candidates across five types:
+
+    | Candidate Type | What it means |
+    |----------------|---------------|
+    | `rule` | A rule, constraint, or format judgment repeated across multiple commands — distill to `harness/rule/` and replace with a one-line reference |
+    | `reference` | A large, seldom-needed methodology block — move to `harness/reference/` and load only when referenced |
+    | `script` | A mechanical, deterministic step (file generation, field validation, status writeback) — fix it in POSIX sh with a hard exit-code gate |
+    | `structure` | Section ordering issues, definitions appearing after their first use, or dangling numbered references |
+    | `cleanup` | Stale facts, removed-command descriptions, or unnecessary negative descriptions (per AGENTS.md constraint 13) |
+  </Step>
+
+  <Step title="Shell coding standard (immediate fix, no confirmation)">
+    Every `.sh` file under `harness/script/` is checked against `harness/rule/coding-standards-shell.md`. Violations of purely mechanical rules are corrected immediately — without entering the candidate table and without asking for confirmation. Rules checked include:
+
+    - Variable references use `"${VAR}"` (double-quoted, braces)
+    - No `sed -i` (write to temp file + `mv` instead, for macOS/Linux compatibility)
+    - No bashisms (`[[`, bash arrays, process substitution) — POSIX `sh` only
+    - `sh -n` syntax check passes
+    - No hardcoded platform-specific paths or GNU-only tool options
+
+    If a fix requires a logic or behavior decision (not purely mechanical), it is downgraded to a `script` candidate and confirmed by the user.
+  </Step>
+
+  <Step title="Candidate table and user confirmation">
+    All identified candidates are presented in two groups:
+
+    - **Group A — Instruction review:** source file | candidate type | suggested landing point | content summary | reason | priority
+    - **Group B — Guidance (from status.yaml `raw` entries):** source workspace | guidance content | suggested landing point | merge or new | reason | occurrence count
+
+    Shell coding-standard fixes already applied are listed separately (not in the candidate table).
+
+    The user picks which candidates to apply. Selected candidates land immediately; `work-status.sh` writes back `distilled` (with landing point) or `dismissed` for each guidance entry.
+  </Step>
+
+  <Step title="Verification">
+    After landing:
+
+    ```bash
+    sh harness/script/lint-harness.sh harness    # must exit 0
+    sh harness/script/scan-routes.sh list harness # all commands present
+    sh harness/script/check-guidance.sh $root     # no BROKEN landing points
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+Run `/tack evolution` periodically (or after a major feature delivery) to keep your harness lean. Commands accumulate inline rules over time; evolution distills them into proper `harness/rule/` files, so the cmd files shrink to pure process skeletons and the rules become reusable across multiple commands.
+</Tip>
+
+## `/tack study` — Outward Learning
+
+`study` treats any external skill, local directory, or Git repository as a teaching source. It reads the material, distills borrowable ideas, lands them in your harness, and then automatically runs one `evolution` pass for inward review.
+
+```
+/tack study https://github.com/example/some-skill.git
+/tack study ~/.trae/skills/another-skill
+/tack study /local/path/to/repo
+```
+
+**How it works:**
+
+<Steps>
+  <Step title="Locate and read the source">
+    Git URLs are shallow-cloned to `$root/.tack/tmp/study-clone-<timestamp>/` (cleaned up after use). Local paths and installed skill directories are read in-place.
+  </Step>
+  <Step title="Distill borrowable ideas">
+    `study` reads the source's directory tree, entry documents, commands, workflows, scripts, rules, templates, and prompts. For each piece of content it produces:
+    - A **borrowable ideas list** (what it does, what type, what value it brings to Tack)
+    - An **exclusion list** (content that duplicates existing Tack capabilities, uses an incompatible tech stack, or violates Tack's core conventions — each with a stated reason)
+  </Step>
+  <Step title="Land changes directly (no mid-process interruption)">
+    Changes are landed immediately — no confirmation between discovery and writing. The principle is **add, merge, optimize; never delete existing content**. If borrowed content conflicts with an existing Tack convention, it is added as a supplementary option, not a replacement. Only replacements are flagged as "pending decisions" in the preview.
+  </Step>
+  <Step title="Unified preview (single confirmation point)">
+    After all changes are written, a single preview shows the complete diff: source, borrowable ideas, exclusions, changed files, and any pending replacement decisions. The user can accept all, request adjustments, or roll back individual files from the backup at `$root/.tack/backup/study-<timestamp>/`.
+  </Step>
+  <Step title="Commit and auto-evolve">
+    After confirmation, changes are committed with `space.sh commit` (message includes the source identifier). Then one full `evolution` pass runs automatically, so any redundancy introduced by the new material is immediately identified as a distillation candidate.
+  </Step>
+</Steps>
+
+## Content Classification Rules
+
+When `record` or `evolution` decides where content lands, it follows `harness/rule/record-classification.md`. The five target types and their routing criteria:
+
+<Accordion title="agents — Resident constraints in AGENTS.md">
+Content that must be present in every session context and whose violation causes immediate errors. Examples: "On Windows, all harness scripts must be invoked via `run.ps1`", "Commits must include the ticket number", "Never operate the `$root` Git repository directly."
+
+**Routing criterion:** Needs to be resident in context, violation causes breakage.
+</Accordion>
+
+<Accordion title="cmd — Commands in harness/cmd/">
+Reusable process capabilities: new commands, or updates to existing command flows. If the content describes a repeatable series of steps the AI should execute on demand, it belongs here.
+
+**Routing criterion:** Reusable command process capability.
+</Accordion>
+
+<Accordion title="workflow — Workflows in harness/workflow/">
+State machines for multi-stage processes. If the content describes a sequence of stages with defined transitions, entry/exit conditions, and an ordered command mapping, it belongs here.
+
+**Routing criterion:** Reusable workflow state machine.
+</Accordion>
+
+<Accordion title="rule — Rules in harness/rule/">
+Coding standards, review criteria, security rules, and business process rules. Loaded only when referenced by a command or workflow — not always resident in context.
+
+**Routing criterion:** Only relevant during coding or review activities.
+</Accordion>
+
+<Accordion title="wiki — Knowledge in wiki/">
+Facts that live outside the code and need to be retrieved across workspaces:
+- `wiki/manifest.md` — external facts (tenants, accounts, environment config, middleware addresses)
+- `wiki/code-understanding.md` — stable navigation anchors (term → search keyword/code entry point, interface → business scenario)
+- `wiki/business-understanding.md` — business background, terminology, source materials
+- `wiki/decisions.md` — technical decisions and engineering conventions (ADRs, retry policies, rounding rules, default values)
+
+**Routing criterion:** Code-external facts, stable anchors, business context, or project-level technical decisions. Volatile code logic never goes here — the code is always the source of truth for implementation details.
+</Accordion>
+
+## How the Three Commands Divide the Work
+
+| Command | When to use | Material source | Confirmation |
+|---------|-------------|-----------------|--------------|
+| `record` | Crystallize something specific now | You provide it, or guidance entries | Per-item review before landing |
+| `evolution` | Periodic harness health review | Your existing harness files | Candidate table, user picks |
+| `study` | Learn from a third-party skill or repo | External source | Single unified preview |
+
+The three commands are designed to complement each other without overlap: `record` handles the material you explicitly supply, `evolution` handles what is already in your harness, and `study` handles everything outside.

@@ -1,0 +1,176 @@
+---
+title: "Work: Create and Manage Project Workspaces and Branch Ops"
+sidebarTitle: "Work"
+description: "Creates, renames, switches, and lists workspaces under space/YYYYMMDD-branch/. Also prepares branch-op worktrees for merge or rebase between two branches."
+---
+
+The `work` command is the entry point for all workspace lifecycle management in Tack Harness. It creates isolated workspaces under `space/<YYYYMMDD>-<branch>/`, registers them in `AGENTS.md`, sets up Git worktrees for each involved repository, and emits a knowledge roster so you know what context is available before writing a single line of spec. For pure branch integration tasks (merge or rebase between two existing branches), `work` also provides a dedicated branch-op path that skips requirement planning entirely.
+
+## Command Signature
+
+```bash
+/tack work [purpose or branch name]
+# Aliases:
+/tack w                          # short form
+/tack 工作区                     # Chinese trigger
+/tack new workspace              # natural language
+/tack switch workspace           # natural language
+/tack merge branches             # natural language (branch-op)
+/tack rebase branches            # natural language (branch-op)
+```
+
+## Parameters
+
+<ParamField path="purpose" type="string" optional>
+  A description of the requirement or task (e.g. "user login feature"), or a branch-op intent such as "merge feature-a into main". When omitted, `work` lists existing workspaces and prompts for next action.
+</ParamField>
+
+## Intent Routing
+
+`work` splits into two top-level flows based on intent:
+
+<Tabs>
+  <Tab title="Workspace Management">
+    For creating, renaming, switching, or listing workspaces. The most common path — used for every new feature or bugfix.
+
+    Four sub-intents: **new** / **rename** / **switch** / **list**
+  </Tab>
+  <Tab title="Branch Operation (branch-op)">
+    For pure branch integration: "merge A into B" or "rebase A onto B". Input must name two existing branches and an operation word. No requirement recording, no spec/plan steps — the workspace goes directly into `branch-op` workflow mode.
+  </Tab>
+</Tabs>
+
+<Note>
+  Ambiguous inputs (e.g. "merge the current feature" without naming a target branch) are always clarified before proceeding. When intent cannot be determined, `work` confirms with the user rather than assuming.
+</Note>
+
+## Workspace Naming Convention
+
+Workspace directories follow a strict pattern:
+
+```
+space/<YYYYMMDD>-<branch>/
+```
+
+- `YYYYMMDD` is the creation date, prepended by the script — directories sorted by name are sorted by creation time.
+- `<branch>` is the Git branch name (no date prefix). The worktree checks out exactly this branch name.
+- `work_id` defaults to the branch name.
+
+## What It Does
+
+### New Workspace
+
+<Steps>
+  <Step title="Clarify Intent">
+    If the description is vague (e.g. "optimise checkout"), `work` generates 3 candidate specific-intent summaries drawn from `AGENTS.md` keywords and `service_repo_mapping`. The user selects one, combines candidates, or provides their own wording. The loop continues until the problem scope is unambiguous.
+  </Step>
+  <Step title="Generate Branch Name Candidates">
+    After intent is clear, produces 3 English kebab-case branch name candidates. The user confirms one or supplies their own.
+  </Step>
+  <Step title="Infer Required Services">
+    Cross-references the intent keywords against `service_repo_mapping` (and `wiki/manifest.md` when available). Lists inferred services for the user to multi-select — all may be deselected if none apply.
+  </Step>
+  <Step title="Create Workspace">
+    Executes:
+    ```bash
+    sh $root/harness/script/work.sh $root <branch> <repo-name...>
+    ```
+    The script creates `space/<YYYYMMDD>-<branch>/` with a flat skeleton (`status.yaml`, `input.md`, `repo/`) and makes a Git worktree for each selected repository under `space/<YYYYMMDD>-<branch>/repo/<repo-name>` checked out to `<branch>`.
+
+    The script outputs `WORKSPACE=<dir-name>` and `BRANCH=<sanitised-branch>` — all subsequent steps use these values, never a self-constructed path.
+  </Step>
+  <Step title="Register and Switch Context">
+    Executes:
+    ```bash
+    sh $root/harness/script/project.sh work-add $root <branch> "<description>" \
+      "$root/space/<WORKSPACE>" <branch> "<svc1,svc2>"
+    ```
+    Appends a `work` entry to `AGENTS.md` and sets `$work=$root/space/<WORKSPACE>`.
+  </Step>
+  <Step title="Output Knowledge Roster">
+    Emits a line-per-item checklist — **names only, no content pasted in**:
+    1. Existing `wiki/` pages (manifest, code-understanding, business-understanding, decisions) with a one-line purpose each.
+    2. Workspace analysis documents from `wiki/code-understanding.md` relevant to the selected repos, with freshness notes (HEAD vs. baseline commit; stale entries flagged with commit-distance count).
+    3. **Cold-repo notice**: repos with no analysis documents get a suggestion to run `ask <repo>` before spec/plan.
+  </Step>
+</Steps>
+
+### Branch-Op Workspace
+
+<Steps>
+  <Step title="Parse Op/A/B">
+    Extracts the operation (`merge` or `rebase`), source branch A, and target branch B from the input. Stops and asks if either branch name is missing or the operation word is ambiguous.
+  </Step>
+  <Step title="Confirm Repositories">
+    Runs `git fetch origin --prune` in each `$root/repo/` repository and checks whether both A and B exist (remote-first, local fallback). Presents a multi-select list when more than one repo qualifies.
+  </Step>
+  <Step title="Create Skeleton (no default worktree)">
+    Executes:
+    ```bash
+    sh $root/harness/script/work.sh --no-worktree $root <branch>
+    ```
+    Produces only `status.yaml`, `input.md`, `wiki/`, and an empty `repo/` placeholder.
+  </Step>
+  <Step title="Prepare Temporary Branches and Worktrees">
+    For each confirmed repo:
+    ```bash
+    sh $root/harness/script/branch-op.sh prepare $root space/<WORKSPACE> \
+      <repo> <op> <A> <B>
+    ```
+    Creates timestamped temporary branches (`A-<ts>`, `B-<ts>`), then creates a worktree for the working branch.
+  </Step>
+  <Step title="Register and Switch Context">
+    Registers the workspace in `AGENTS.md` and writes `status.yaml` fields: `workflow: branch-op`, `status: preparing`, `services`, and the full `branch_op` block (temp branch names, `pushed: false` flags).
+  </Step>
+</Steps>
+
+### Rename, Switch, and List
+
+<Tabs>
+  <Tab title="Rename">
+    Clarifies new intent and generates a new branch name. Renames the workspace directory from `space/<date>-<old>/` to `space/<date>-<new>/` (the original date prefix is always preserved). Runs `git branch -m <old> <new>` in each worktree. Updates `AGENTS.md` and `status.yaml`.
+  </Tab>
+  <Tab title="Switch">
+    Reads `AGENTS.md` work list, highlights the current workspace. Sets `$work` to the target entry's `work_path` and re-reads `status.yaml`. Emits the same knowledge roster as step 6 of new-workspace creation.
+  </Tab>
+  <Tab title="List">
+    Displays all workspaces as a table:
+
+    | work_id | Description | Status | Branch |
+    |---|---|---|---|
+    | `user-login` | User login feature | in-progress | `user-login` |
+
+    The current workspace is marked with **(current)**. Sorted by directory name = sorted by creation time. Accepts a sequence number or branch name to switch directly.
+  </Tab>
+</Tabs>
+
+## Outputs
+
+| Artefact | Location | Description |
+|---|---|---|
+| Workspace skeleton | `space/<YYYYMMDD>-<branch>/` | `status.yaml`, `input.md`, `repo/` |
+| Git worktrees | `space/<YYYYMMDD>-<branch>/repo/<name>/` | One per selected repository |
+| AGENTS.md work entry | `$root/AGENTS.md` | `work_id`, `work_path`, `branch`, `services` |
+| Knowledge roster | Agent output | Navigation list of wiki pages and analysis docs |
+
+## Post-Completion Checklist
+
+```
+- [ ] space/<YYYYMMDD>-<branch>/status.yaml (with correct work_dir and branch) and input.md exist
+- [ ] Each selected repo has a usable worktree under space/<YYYYMMDD>-<branch>/repo/ checked out to <branch>
+- [ ] AGENTS.md project block work list matches the disk state
+- [ ] Standard workspace: knowledge roster emitted (wiki pages + analysis docs with freshness; cold repos prompted)
+- [ ] branch-op: op/A/B parsed and repos confirmed; prepare succeeded; status.yaml has workflow: branch-op,
+      status: preparing, and a complete branch_op block (all temp branch names present)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Write Requirements" icon="pencil">
+    Write raw requirements into `$work/input.md`, then run `spec` to produce a structured specification.
+  </Card>
+  <Card title="Branch-Op Integration" icon="code-branch">
+    Run `branch-op.sh integrate` to start the integration, use `solve` on conflicts, then `push` and `close`.
+  </Card>
+</CardGroup>

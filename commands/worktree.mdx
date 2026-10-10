@@ -1,0 +1,93 @@
+---
+title: "Worktree: Create a Missing Git Worktree for a Repository"
+sidebarTitle: "Worktree"
+description: "Add a git worktree for a repository that was not present when the workspace was created, check out the workspace branch, and register the service in status.yaml."
+---
+
+Tack's `worktree` command creates a git worktree for a specific code repository inside the current workspace. Normally worktrees are created automatically by [`/tack work`](/commands/work) when the workspace is first set up, and by [`/tack code`](/commands/code) when it detects a missing one. Use `worktree` directly only when a repository was added to the project after the workspace was already created — for example, when a new microservice repository is connected mid-task. The worktree is placed at `space/<YYYYMMDD>-<branch>/repo/<repo-name>/` and checks out the workspace branch.
+
+## Command Signature
+
+```text
+/tack worktree [repo-name]
+/tack wt [repo-name]
+```
+
+**Triggers:** `worktree`  
+**Short form:** `wt`  
+**Parameters:** repository name (the name of the repository as registered in the project)
+
+## Prerequisites
+
+Before running `worktree`, confirm:
+
+- The current workspace (`$work`) is set.
+- The repository exists at `$root/repo/<repo-name>` and is a valid git repository.
+- The repository does **not** already have a worktree in the current workspace.
+
+## What It Does
+
+<Steps>
+  <Step title="Determine target repository and branch">
+    Reads the repository name from the command parameter. The branch defaults to the workspace branch, taken from the `branch` field of `$work/status.yaml` (without the date prefix). The workspace directory name is taken from the `work_dir` field of `status.yaml` (i.e., `basename "$work"`).
+  </Step>
+  <Step title="Create the worktree">
+    Runs the framework's worktree helper:
+
+    ```bash
+    sh $root/harness/script/git-worktree-helper.sh create $root <work_dir> <branch> <repo-name>
+    ```
+
+    This places the worktree at `space/<YYYYMMDD>-<branch>/repo/<repo-name>/`. If the target branch does not yet exist in that repository, it is created automatically from the repository's default branch.
+  </Step>
+  <Step title="Register the service">
+    Reads the existing `services` list from the matching `work` entry in `AGENTS.md`. Merges the new repository name into the list (deduplicating), then runs:
+
+    ```bash
+    sh $root/harness/script/project.sh work-services $root <work_id> "<svc1,svc2,...>" "$work/status.yaml"
+    ```
+
+    This writes the updated services list back to both the `AGENTS.md` project info block and the workspace `status.yaml`.
+  </Step>
+  <Step title="Framework auto-commit (no user action needed)">
+    The framework automatically commits the registration change to the space-root repository:
+
+    ```bash
+    sh $root/harness/script/space.sh commit $root "chore(tack): attach worktree <repo-name>"
+    ```
+
+    If nothing changed (e.g. the service was already listed), the commit is skipped. This commit covers only `AGENTS.md` and `status.yaml` — it never touches your code.
+  </Step>
+</Steps>
+
+## Outputs
+
+| Item | Detail |
+|---|---|
+| **Worktree directory** | `space/<YYYYMMDD>-<branch>/repo/<repo-name>/` checked out on the workspace branch. |
+| **Updated `services`** | The new repository added to the `services` list in both `AGENTS.md` and `status.yaml`. |
+| **Framework commit** | `chore(tack): attach worktree <repo-name>` auto-committed to the space-root repository. |
+
+## Completion Checklist
+
+- `git -C $work/repo/<repo-name> status` exits cleanly and the HEAD is on the target branch.
+- The `AGENTS.md` work entry and `$work/status.yaml` both list the new repository in `services`.
+
+<Note>
+  Under normal circumstances, worktrees are created automatically by `/tack work` at workspace creation time and by `/tack code` when it detects a missing one. Use `/tack worktree` only when a repository was added to the project after the workspace already existed.
+</Note>
+
+<Note>
+  Worktree creation and removal are **always handled through `git-worktree-helper.sh`**. Direct `git worktree add` / `git worktree remove` invocations outside of Tack's scripts are not supported and may leave the `AGENTS.md` and `status.yaml` registrations out of sync.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Code" icon="code" href="/commands/code">
+    Start or continue development inside the newly created worktree.
+  </Card>
+  <Card title="Fetch" icon="cloud-arrow-down" href="/commands/fetch">
+    Pull the latest remote commits into the new worktree before writing code.
+  </Card>
+</CardGroup>

@@ -1,0 +1,94 @@
+---
+title: "Tech Design: Technical Review Document from Spec and Plan"
+sidebarTitle: "Tech Design"
+description: "Combines the tech-design template with confirmed spec.md and plan.md to produce tech-design.md. External doc links are recorded back into status.yaml for traceability."
+---
+
+The `tech-design` command is the third and final step of Tack Harness's planning phase. It takes the confirmed requirement (`spec.md`) and development plan (`plan.md`) and combines them with the project's technical design template to produce a comprehensive technical review document — `tech-design.md`. This document is written flat in the workspace root (not in a subdirectory), and serves as the artifact shared with the wider team for technical review. External document links (Feishu, Notion, Confluence, etc.) are recorded back into `status.yaml` once the team has reviewed the document on their preferred platform.
+
+## Command Signature
+
+```bash
+/tack tech-design
+# Aliases:
+/tack td          # short form
+```
+
+**Triggers:** `技术方案`, `技术文档`, `技术评审`, `tech-design`, `technical design`, `tech doc`, `tech review`
+
+## Prerequisites
+
+- `$work/spec.md` must exist and have been confirmed by the user.
+- `$work/plan.md` is recommended to be confirmed (`progress.plan: true`). Skipping `plan` requires explicit user confirmation.
+
+## What It Does
+
+<Steps>
+  <Step title="Write Stage Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set stage tech-design next "生成并确认 tech-design.md"
+    ```
+  </Step>
+  <Step title="Read Template and Analysis Artifacts">
+    Loads three primary inputs:
+
+    1. `$root/harness/template/tech-design.md` — the structural template defining all required sections
+    2. `$work/spec.md` — requirement scope, module interactions, boundary agreements, acceptance criteria
+    3. `$work/plan.md` — implementation approach, module breakdown, data layer, interface layer, decision records
+
+    Context-loading follows `harness/rule/context-loading.md`: wiki sections and code files (data models, interfaces, config) are accessed by keyword search, not wholesale reads.
+  </Step>
+  <Step title="Generate tech-design.md">
+    Writes the document to **`$work/tech-design.md`** (flat in the workspace root — not inside any subdirectory). The document covers:
+
+    | Section | Content |
+    |---------|---------|
+    | Requirement Review & Approach Overview | What is being built and the selected solution |
+    | Architecture & Module Breakdown | Service boundaries, module responsibilities, component diagram |
+    | Data Flow | End-to-end data movement across modules and services |
+    | Detailed Design | Data models, API contracts, core logic, exception handling |
+    | Technical Selection | Framework choices, library choices, rationale |
+    | Security & Performance Design | Auth model, data validation, caching strategy, throughput targets |
+    | Deployment Plan | Environment topology, release sequence, rollback plan |
+    | Risks & Open Questions | Unresolved concerns requiring team input |
+
+    In multi-service scenarios, service boundaries and call relationships are explicitly documented and kept consistent with the boundary agreements in `spec.md`.
+  </Step>
+  <Step title="Review, Revise, and Record External Links">
+    The user reviews the draft and provides revision feedback. After revisions are applied and the user confirms, any external documentation links (e.g., the document hosted on Feishu or Confluence) are written back to `status.yaml`:
+
+    ```yaml
+    tech_doc_url: "https://your-team.feishu.cn/docs/..."
+    ```
+
+    This keeps the external artifact traceable from the workspace even after `close`.
+  </Step>
+  <Step title="Write Completion Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set progress.tech-design true next "执行 code 开始逐任务开发"
+    ```
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/tech-design.md" icon="file-pen">
+    The technical review document. Flat file in the workspace root. Covers architecture, data flow, detailed design, security, performance, and deployment.
+  </Card>
+  <Card title="$work/status.yaml (tech_doc_url)" icon="link">
+    If the team maintains the document on an external platform, the link is recorded here. Referenced by `close` during the delivery summary.
+  </Card>
+</CardGroup>
+
+<Info>
+  `tech-design.md` is stored as a flat file directly in `$work/`, not inside a `doc/` subdirectory. This keeps it alongside `spec.md` and `plan.md` for easy co-navigation during the `code` phase.
+</Info>
+
+## Next Steps
+
+Run `code` to begin developing the task list defined in `status.yaml`.

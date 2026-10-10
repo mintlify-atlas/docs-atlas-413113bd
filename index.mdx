@@ -1,20 +1,87 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Tack Harness: Minimal AI-Assisted R&D Workflow Framework"
+sidebarTitle: "Home"
+description: "Tack Harness is a minimal, fully configurable programming workflow framework that standardizes AI-assisted software development through structured commands, state-machine workflows, and automatic experience distillation."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Tack Harness brings structure to AI-assisted software development. It wraps the full R&D lifecycle — from requirement analysis through code, review, and delivery — into a set of composable commands and state-machine workflows. Every capability is a Markdown file you can add, modify, or remove without changing the core skill.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Initialize a workspace and complete your first requirement in minutes.
+  </Card>
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts">
+    Understand the command routing model, workflow state machine, and workspace structure.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation/overview">
+    Install Tack into TRAE, Cursor, Windsurf, Claude Code, or any compatible AI agent.
+  </Card>
+  <Card title="Command Reference" icon="terminal" href="/commands/init">
+    Full reference for all 26 built-in commands across project space, development, and Git.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What Tack Harness does
+
+Tack Harness is a **programming workflow framework** purpose-built for software R&D teams using AI coding agents. It organizes the development process along two axes: the software engineering lifecycle (time) and a project directory structure aligned to development habits (space).
+
+<CardGroup cols={2}>
+  <Card title="Development Workflow" icon="code-branch" href="/workflow/development">
+    Full state machine: spec → plan → code → commit → merge → close.
+  </Card>
+  <Card title="Bugfix Workflow" icon="bug" href="/workflow/bugfix">
+    Reproduce → diagnose → fix → verify, with automated defect origin tracing.
+  </Card>
+  <Card title="Extending Tack" icon="puzzle-piece" href="/extending/custom-commands">
+    Add a Markdown file, register a new capability. No changes to the skill itself.
+  </Card>
+  <Card title="IDE Hook Acceleration" icon="bolt" href="/extending/hooks">
+    Optional zero-roundtrip route resolution for TRAE and Claude Code.
+  </Card>
+</CardGroup>
+
+## Key design principles
+
+| Principle | What it means |
+|-----------|---------------|
+| **Fixable process** | Anything a script can do never relies on the LLM — fixed-flow scripts guarantee stability and keep token costs down |
+| **Extensible capabilities** | Adding one Markdown file registers one new capability; no changes to the skill itself |
+| **Traceable state** | `status.yaml` is the single stateful file — the AI always knows current progress and next action |
+| **Isolated changes** | Git worktrees isolate code changes per requirement; the main repo stays a read-only baseline |
+| **Distilled experience** | Every completed task automatically crystallizes practical knowledge into commands, workflows, rules, or wiki entries |
+
+## Getting started
+
+<Steps>
+  <Step title="Install the skill">
+    Install Tack into your AI agent (TRAE, Cursor, Windsurf, Claude Code, or others):
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/frcoder-lh/tack-harness/master/install.sh | sh -s
+    ```
+    Or ask your agent directly: `Install this skill: https://github.com/frcoder-lh/tack-harness`
+  </Step>
+  <Step title="Initialize a project space">
+    In an empty directory, run `/tack` to trigger initialization. Tack sets up the workspace skeleton, initializes a Git repository, and guides you through connecting your code repositories.
+    ```
+    /tack
+    ```
+  </Step>
+  <Step title="Create your first workspace">
+    Create a workspace for a requirement. Tack generates branch name candidates, infers involved services, and creates git worktrees.
+    ```
+    /tack work user-login
+    ```
+  </Step>
+  <Step title="Run the development chain">
+    Walk through the full R&D chain for the requirement:
+    ```
+    /tack spec && /tack plan && /tack code
+    /tack commit && /tack push && /tack merge
+    /tack close
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  All commands support Chinese and English triggers plus short forms. Inside a tack-activated conversation the `/tack` prefix can be omitted — just type the command or use natural language.
+</Note>

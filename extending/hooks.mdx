@@ -1,0 +1,142 @@
+---
+title: "IDE Hook Acceleration Layer for TRAE and Claude Code"
+sidebarTitle: "Hooks"
+description: "Tack's optional Hook layer pre-injects routes and resolves commands without roundtrips for TRAE and Claude Code. Disabled by default; never intercepts."
+---
+
+Tack ships an optional IDE Hook acceleration layer in `harness/script/hook/`. Hooks move deterministic facts — the route table, workspace paths, command bodies, and status snapshots — into the agent's context before the AI needs them, saving roundtrips on every command invocation. The source of truth remains `AGENTS.md` + `scan-routes.sh`; hooks only move those facts earlier. They are disabled by default and never intercept or block any operation.
+
+## How Hooks Work
+
+Without hooks, the AI performs several tool calls at the start of every session and every command:
+
+1. Call `scan-routes.sh list` to discover the route table
+2. Detect the space root and active workspace from the current directory
+3. Call `scan-routes.sh resolve` on the user's input to find the command
+4. Read the command file body
+5. Read `status.yaml` for the current workspace state
+
+With hooks enabled, steps 1–5 are performed in shell before the AI is even invoked, and the results are injected as `additionalContext`. The AI begins with full route awareness and zero tool calls spent on discovery.
+
+<Note>
+Hooks do not change what the AI decides. Semantic recognition fallback, user confirmation, and state-machine guidance all remain governed by `$root/AGENTS.md` and the corresponding `cmd/workflow` files. When the hook's cached data conflicts with disk, the AI re-reads the disk file — the cache is always advisory.
+</Note>
+
+## Three Hook Events
+
+Tack implements three hook events. Each targets a different phase of the session lifecycle:
+
+<CardGroup cols={2}>
+  <Card title="SessionStart" icon="play">
+    **Triggered:** After the session is created, before the first exchange.
+
+    **What it does:** Detects the space root (`$root`) from the current working directory. Resolves the active workspace (`$work`): exact match when cwd is inside a `space/<name>/` directory; falls back to the most recently active workspace otherwise. Pre-injects the full `scan-routes list` route table, the resolved `$root`/`$work` paths, and a workspace status snapshot into the session context.
+
+    **Session impact:** Saves the first-round `scan-routes list` roundtrip. The AI starts every session already knowing all available commands and workflows.
+  </Card>
+
+  <Card title="UserPromptSubmit" icon="message">
+    **Triggered:** After the user sends a message, before the model processes it.
+
+    **What it does:** Strips the optional `/tack` prefix from the user's input, then runs `scan-routes resolve` in shell. Three outcomes are possible:
+    - **Unique hit (exit 0):** Injects the command/workflow body, routing metadata, and the current status snapshot — the AI executes with zero tool calls.
+    - **Multiple hits (exit 2):** Lists candidates and asks the user to select one.
+    - **No hit (exit 1):** Injects the full workflow + command table for the AI to perform semantic matching.
+
+    **Session impact:** Saves route-resolution roundtrips and repeated space/workspace scans. Also resolves `$root`/`$work` from cwd in real time, naturally supporting multi-project windows and multiple parallel workspaces.
+  </Card>
+
+  <Card title="PreToolUse" icon="eye">
+    **Triggered:** Before every tool call the AI makes.
+
+    **What it does:** Observation mode by default. Monitors invocations of command-execution tools (`RunCommand`/`Bash` only — high-frequency tools like Read/Grep are ignored to prevent log explosion). Checks for three boundary rule hits:
+    - **R1:** Git write operations inside `$root` but outside `$root/space/` or `$root/repo/` (Git dual-boundary violation).
+    - **R2/R2L:** `git push --force` or `--force-with-lease`.
+    - **R3:** `git` commands with `--no-verify` or `--no-hooks`.
+
+    **Session impact:** Zero output, zero interception by default. Rule hits are logged only when `TACK_HOOK_LOG=1`.
+  </Card>
+
+  <Card title="Multi-project Support" icon="folders">
+    **Built into UserPromptSubmit and PreToolUse.**
+
+    Both hooks resolve `$root` and `$work` from the actual `cwd` of the current operation — not from a session-level environment variable. This means a single IDE window can contain multiple tack spaces, and multiple workspaces within one space can be active simultaneously without hooks routing to the wrong workspace.
+  </Card>
+</CardGroup>
+
+## Enabling Hooks
+
+When a tack space is initialized, `install-hooks.sh` generates two hook declaration files automatically:
+
+```
+<space-root>/
+├── .trae/
+│   └── hooks.json          ← TRAE (TraeCode) project-level hook declaration
+└── .claude/
+    └── settings.json       ← Claude Code project-level hook declaration
+                              (TRAE also reads this file)
+```
+
+Both files are generated using `harness/template/hook/` as the template source and platform-appropriate shell invocation commands. After generation, you must **manually enable hooks** in the IDE:
+
+- **TRAE:** Settings → Hooks → enable project-level hooks
+- **Claude Code:** reads `.claude/settings.json` automatically; no manual step required
+
+<Warning>
+The generated files are skipped if they already exist (idempotent behavior, matching the `-n` semantics of `init-tack`). This protects any custom hook configuration you have added.
+</Warning>
+
+## Environment Variables
+
+Two environment variables control hook behavior. Both are off by default:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `TACK_HOOK_LOG=1` | Off | Enables the unified hook log at `$root/.tack/log/hook.log`. Every invocation of all three hooks appends a full record (see log format below). When off, hook output is byte-for-byte unchanged — no overhead. |
+| `TACK_HOOK_ENFORCE=1` | Off | **Reserved. Never enable.** Activates `PreToolUse` deny mode: matched boundary rules emit a `permissionDecision: deny` JSON response. Calibrate false positives with `TACK_HOOK_LOG=1` first. |
+
+<Warning>
+Do not set `TACK_HOOK_ENFORCE=1` until you have reviewed `hook.log` carefully. The deny path is reserved for future use and may produce false positives that block legitimate tool calls. Always calibrate with log-only mode first.
+</Warning>
+
+## Unified Log Format
+
+When `TACK_HOOK_LOG=1` is set, every invocation of all three hooks appends a structured block to `$root/.tack/log/hook.log`. The log captures:
+
+- **Time** — ISO timestamp of the invocation
+- **Event** — `SessionStart`, `UserPromptSubmit`, or `PreToolUse`
+- **PID** — process ID (useful for correlating concurrent calls)
+- **`$root` / `$work`** — resolved space root and active workspace
+- **Input payload** — the full JSON event payload received from the IDE
+- **Injection/interception output** — exactly what was written to stdout
+- **Exit code** — the hook's exit code
+- **Duration** — wall-clock time for the hook invocation
+
+Concurrent hook calls (common when the IDE spawns parallel sessions) are written serially in whole blocks and never interleave, so the log is always coherent.
+
+```
+[2026-10-01T14:32:01Z] Event=UserPromptSubmit pid=12345
+  root=/home/user/my-project
+  work=/home/user/my-project/space/20261001-user-login
+  input.prompt="/tack code"
+  resolve.exit=0
+  resolve.hit=cmd|dev|harness/cmd/dev/code.md|code|c|...
+  output.bytes=2847
+  exit=0 duration=42ms
+```
+
+## Reverting
+
+To fully revert to the standard path (where the AI calls `scan-routes.sh` actively on each invocation), delete the `.trae/` and `.claude/` directories under the space root:
+
+```bash
+rm -rf <space-root>/.trae <space-root>/.claude
+```
+
+Framework capabilities are completely unaffected. The AI continues to work exactly as it did before hooks were installed — it simply performs route discovery via explicit tool calls rather than receiving pre-injected context.
+
+## Degradation Behavior
+
+All three hook scripts are written to fail silently. If any hook encounters an unexpected condition (non-tack space, missing files, script error), it produces zero output and exits `0`. The IDE session continues without any influence from the hook, and the AI operates normally using its own tool calls.
+
+This "zero output on any error" design means hooks can never break a session — the worst outcome of a hook failure is that the session starts without the acceleration context, not that the session fails to start.

@@ -1,0 +1,129 @@
+---
+title: "Code: Task-by-Task Development with Dependency Scheduling"
+sidebarTitle: "Code"
+description: "Verifies repository readiness, then develops tasks in topological order — parallel where deps allow, serial where they don't. Reuses existing patterns and auto-resolves minor decisions without interrupting the user."
+---
+
+The `code` command is Tack Harness's primary development engine. It reads the confirmed `plan.md` and the task list in `status.yaml`, verifies that all required repositories and worktrees are ready, and then drives development task by task in dependency order. Tasks with no mutual dependencies are developed in parallel; tasks that depend on others wait for their predecessors. The AI minimizes interruptions — only stopping for genuine blockers, unresolved business decisions, or module-level milestones — and records every automatic decision in the commit message and delivery summary.
+
+## Command Signature
+
+```bash
+/tack code [task-id]
+# Aliases:
+/tack c           # short form
+```
+
+**Triggers:** `编码`, `开发`, `写代码`, `code`, `coding`, `develop`, `write code`
+
+Providing an optional `task-id` executes only that specific task (all its `deps` must already be `done`). Without an argument, all tasks whose dependencies are satisfied are processed continuously.
+
+## Prerequisites
+
+- `$work/plan.md` must be confirmed (`progress.plan: true`) and the `tasks` list in `$work/status.yaml` must be non-empty.
+- All decision points in `plan.md`'s "Decision Record" section that require user input must be closed before coding starts.
+
+## Delivery Modes
+
+<CardGroup cols={2}>
+  <Card title="Repository Mode (Default)" icon="code-branch">
+    Code is written into `$work/repo/<repo-name>/` (git worktrees). A task is marked `done` after the local build and relevant tests pass. This is the default mode for all development work.
+  </Card>
+  <Card title="Snippet Mode (Explicit Request Only)" icon="code">
+    Activated only when the user **explicitly states** "no repo needed, just generate a code snippet, no compile or run". Code is delivered as inline conversation output, with the suggested target path annotated on each snippet. No files are created or modified. Tasks are marked `done` upon snippet delivery.
+  </Card>
+</CardGroup>
+
+<Warning>
+  All code changes in repository mode are written exclusively to `$work/repo/<repo-name>/` (the git worktree). The main `$root/repo/<name>/` is always read-only. Direct modification of the main repo is strictly prohibited, even when a worktree is unavailable.
+</Warning>
+
+## What It Does
+
+<Steps>
+  <Step title="Repository Readiness Check">
+    Aggregates the repository list from the `repo` field of all tasks in `status.yaml` and the "Repo" column of `plan.md`'s module table. Then checks each repo:
+
+    | Scenario | Action |
+    |----------|--------|
+    | Task has no repo listed and the list is empty | Confirm the target repo with the user before continuing |
+    | `$root/repo/<name>` does not exist | **Pause `code`**, invoke `create-repo` to create the repo, then resume |
+    | Repo exists but `$work/repo/<name>` has no worktree | Invoke `worktree` to set up the worktree, then resume |
+    | User refuses to create repo or worktree | Mark affected tasks `blocked`, note reason in `current.next`; do **not** fall back to modifying the main repo |
+
+    In snippet mode, this entire check is bypassed.
+  </Step>
+  <Step title="Topological Scheduling">
+    Reads the `tasks` list from `status.yaml` and sorts by `deps`:
+
+    - Tasks whose `deps` are all `done` are eligible to start.
+    - Tasks from different modules or repos can run in parallel.
+    - Tasks within the same dependency chain are processed serially.
+
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set status developing stage code next "<batch goal>"
+    ```
+
+    The first task in the batch is set to `in_progress` directly in the YAML.
+  </Step>
+  <Step title="Load Coding Rules">
+    For each task, `code` loads the applicable rules from `$root/harness/rule/`:
+
+    - `coding-standards.md` — only sections with substantive content (empty sections are skipped)
+    - Language-specific file if it exists: `coding-standards-<language>.md` (e.g., `coding-standards-python.md`)
+    - `security.md` — **mandatory** when the task involves any of: external input, command/process execution, database queries, web output, file paths, authentication, credentials/encryption, or new dependencies
+
+    When no project-specific standard exists, the default baseline is to imitate the existing code patterns in the repository.
+  </Step>
+  <Step title="Implement Tasks Continuously">
+    For each task, the AI:
+
+    1. **Briefly states** the task goal and involved repo in one sentence — does not wait for confirmation, starts immediately.
+    2. Uses `grep` to locate change points and reusable assets. **When similar logic already exists, reuse it or imitate its pattern strictly** — naming conventions, layering, exception handling, logging, config style.
+    3. Implements per `plan.md`'s coding guide, decision records, and the task's acceptance criteria.
+    4. In repository mode: marks the task `done` after local build and related tests pass. In snippet mode: marks `done` upon snippet delivery.
+    5. Sets the next ready task to `in_progress` and continues.
+
+    **Automatic decision handling:** If a multi-option choice arises that is not in the plan's Decision Record, the AI picks the engineering-optimal solution (consistency with existing code, maintainability, minimum risk) and records the choice and rationale in the commit message and delivery summary. The user is **not** interrupted.
+  </Step>
+  <Step title="Pause Conditions (Interrupts Only When Necessary)">
+    `code` pauses and asks the user only in these cases:
+
+    - A task needs to be set to `blocked` (missing external dependency, environment issue, or missing information)
+    - A business or product decision arises that is not covered by the plan and cannot be resolved by engineering judgment
+    - All tasks in a module are complete (module milestone: summarizes the module's changes and offers the user a choice to review or continue to the next module)
+
+    Everything else is handled continuously without per-task confirmation.
+  </Step>
+  <Step title="Batch Wrap-up">
+    After all tasks in the batch are complete:
+
+    - Updates `status.yaml`: all `done` tasks updated; executes `work-status.sh set next "<next steps>"`.
+    - When all tasks reach `done`: adds `progress.code true`.
+    - Outputs a **delivery summary**: per-module list of tasks, changed files or delivered snippets (with suggested target paths in snippet mode), and key design choices (including all automatic decisions).
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="Code changes in $work/repo/<name>/" icon="code-commit">
+    All repository-mode changes land exclusively in the git worktrees under the workspace. Main repo is untouched.
+  </Card>
+  <Card title="$work/status.yaml (tasks)" icon="list-check">
+    Task statuses updated in real time: `pending` → `in_progress` → `done` (or `blocked`). `progress.code: true` set when all tasks complete.
+  </Card>
+</CardGroup>
+
+<Note>
+  After `code` completes, you can run `commit` and `merge` directly — no testing commands are required. `testcode`, `test`, and `run` are on-demand tools you trigger yourself. The AI will never ask "shall we run tests?"
+</Note>
+
+## Next Steps
+
+- Continue running `code` to advance remaining tasks.
+- When all tasks are done, run `commit` to commit the changes.
+- Use `fix` if requirement or implementation problems are discovered.
+- Use `testcode`, `test`, or `run` any time you want to add testing or execute scripts — these are entirely optional.

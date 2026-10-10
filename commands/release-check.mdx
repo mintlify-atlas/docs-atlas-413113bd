@@ -1,0 +1,163 @@
+---
+title: "Release Check: Pre-Release Go-Live Checklist from Diff"
+sidebarTitle: "Release Check"
+description: "Translates every environment-related change in the diff into executable go-live checklist items — migration statements, config templates, API permission requests, and middleware resource requests."
+---
+
+The `release-check` command answers the question "what do we need to prepare before going live?" It reads the same three-dot diff used by `code-review` and systematically identifies every environment-related change — database schema changes, config key additions or modifications, new external API calls requiring permissions, and new middleware resources that need to be provisioned. Each identified item is translated into a concrete, executable action: a DDL statement, a config template, a permission request item, or a resource provisioning request. The result is `$work/release-check.md`, a checklist you work through before flipping the switch.
+
+## Command Signature
+
+```bash
+/tack release-check [target-branch]
+# Aliases:
+/tack rc          # short form
+```
+
+**Triggers:** `上线检查`, `发布检查`, `release-check`, `releasecheck`, `release check`, `go-live check`
+
+The `target-branch` parameter defaults to the main trunk (`master`/`main`), detected automatically.
+
+## Prerequisites
+
+- `$work/plan.md` must be confirmed.
+- `$work/tech-design.md` should exist (noted in the report header if absent).
+- All changes in involved repositories must be **committed** — the check is based on committed facts. A `fetch` is recommended first.
+- All Git reads happen within `$work/repo/<repo-name>/` only.
+
+## What It Does
+
+<Steps>
+  <Step title="Write Stage Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set stage review task 上线检查 next 生成release-check.md
+    ```
+    Does not change the workflow `status` field.
+  </Step>
+  <Step title="Determine Scope and Export Diff Facts">
+    Uses the same diff-export method as `code-review`:
+
+    ```bash
+    sh $root/harness/script/git-diff-context.sh \
+      $work/repo/<repo-name> $root/.tack/tmp/review [target-branch]
+    ```
+
+    If `$work/code-review.md` already exists and its header's merge-base and HEAD match the current diff, `release-check` can **reuse the diff conclusions** from that report and focus only on identifying checklist items.
+
+    Repos with `empty: true` are noted and skipped. If all repos show no difference, the command halts with "no difference from target branch".
+  </Step>
+  <Step title="Load Inputs">
+    - `$work/plan.md` — deployment architecture, dependency list, data model sections
+    - `$work/tech-design.md` — same sections
+    - `$root/wiki/manifest.md` — deployment environments, platform entry points, request processes (if recorded); missing entries are flagged, never guessed
+    - Diff files and necessary full file context (migration files, config templates)
+
+    Context loading follows `harness/rule/context-loading.md`.
+  </Step>
+  <Step title="Identify Go-Live Checklist Items">
+    The diff is the **only source of truth** — every item must have a `path:line` anchor. Items with no diff evidence are not invented.
+
+    <Accordion title="Database Changes">
+      Extracts from migration files, ORM entities, and SQL resources:
+
+      - New or modified tables, columns, and indexes
+      - Data migration and correction scripts
+
+      For each item, provides:
+      - **Executable DDL/DML statement** and corresponding rollback statement
+      - Execution environment (BOE / PPE / PROD)
+      - Execution timing (before release / during release / after release)
+    </Accordion>
+
+    <Accordion title="Config Changes">
+      New or modified config keys across: application config files, config center entries, environment variables, feature flags.
+
+      For each item, provides:
+      - **Change template**: key name, example value, description, source file anchor, effective environment
+      - Classification: "must take effect with the release" vs "can be adjusted after release"
+    </Accordion>
+
+    <Accordion title="New External API Calls">
+      New outbound dependencies added by this change: HTTP/RPC client calls, message producers, third-party API integrations.
+
+      For each item, provides:
+      - Target service and interface, source anchor
+      - **Required permissions** to request: service permissions, network allowlist entries, auth credentials
+      - Timeout, retry, and fallback recommendations
+    </Accordion>
+
+    <Accordion title="New Middleware Resources">
+      New middleware dependencies introduced by this change: MQ topics, Redis key spaces, Elasticsearch indexes, scheduled platform tasks.
+
+      For each item, provides:
+      - Type, purpose, source anchor
+      - **Resources to provision in advance**: cluster, topic, permissions, and dependent environments
+    </Accordion>
+
+    <Accordion title="Other Checklist Items (only when diff has evidence)">
+      - New scheduled jobs or workers
+      - New ports or new services
+      - New secrets or credentials (must go through the credential management platform — never committed)
+      - Monitoring, alerting, and logging requirements
+      - Capacity planning and rollout/canary strategy
+      - Rollback plan
+
+      Items with no diff evidence in the current change are marked "No changes in this release". Suspected but unverifiable items go to "Pending manual confirmation".
+    </Accordion>
+  </Step>
+  <Step title="Generate $work/release-check.md">
+    The report structure:
+
+    ```
+    > Review scope: <target_ref>...HEAD (merge-base: <hash>)  Repos: <list>  Generated: <date>
+    ```
+
+    Each category gets a section with a uniform table:
+
+    | # | Checklist Item | Source Anchor | Statement / Template / Request | Environment | Status |
+    |---|----------------|---------------|-------------------------------|-------------|--------|
+    | 1 | Add `payments` table | `migrations/001_add_payments.sql:1` | `CREATE TABLE payments (...)` | PROD | `[ ]` |
+
+    The Status column contains `[ ]` checkboxes — worked through manually before going live.
+
+    The document ends with an **"Execution Order Recommendation"** section, ordering items by dependency:
+
+    ```
+    Resource provisioning → Database changes → Config push → Code release → Verification and canary
+    ```
+
+    For multi-repo releases, the per-repo publish order is also specified.
+  </Step>
+  <Step title="Write Completion Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set progress.release_check true \
+      next "按清单完成上线准备；未合并先 merge，收尾走 close"
+    ```
+    If the user has an upcoming release date, suggests recording it in `status.yaml`'s `deploy` block.
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/release-check.md" icon="clipboard-check">
+    The go-live checklist. Four categories, each with executable statements/templates and `[ ]` checkboxes. Includes execution order recommendation.
+  </Card>
+  <Card title="$work/status.yaml" icon="gear">
+    Updated with `progress.release_check: true`. The `deploy` block can be populated with release schedule details.
+  </Card>
+</CardGroup>
+
+<Note>
+  Every checklist item must have a code anchor (`path:line`). Items with no diff evidence are never invented. If something is flagged as "no changes in this release," that means the diff was checked and nothing was found — it is not a placeholder.
+</Note>
+
+## Next Steps
+
+- Work through the checklist — provision resources, apply database changes, push configs, then release the code.
+- If the branch is not yet merged, run `merge` first.
+- After the release is verified, run `close` to wrap up the workspace. Any test lanes in `status.yaml`'s `deploy` block with `deploying/deployed` status should be marked `recycled` on the deployment platform.

@@ -1,47 +1,218 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Tack Harness in 5 Steps"
+sidebarTitle: "Quickstart"
+description: "Complete walkthrough of the full R&D chain — from installing the skill to closing a workspace — illustrated with a concrete 'user login' requirement example."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+This guide walks you through the complete Tack Harness workflow using a "user login" feature as a running example. By the end you will have installed the skill, initialized a project space, created and analyzed a requirement, written code in an isolated worktree, and closed the workspace with automatic experience distillation. The entire chain takes fewer than ten commands.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+### Install the skill
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+Tack Harness is installed as a skill into your AI coding agent. There are two recommended ways to do this.
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
+**Option A — Let the agent install it (recommended)**
+
+In TRAE (or any supported agent), type:
+
+```
+Install this skill: https://github.com/frcoder-lh/tack-harness
+```
+
+The agent downloads, configures, and activates the skill automatically.
+
+**Option B — One-line script**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/frcoder-lh/tack-harness/master/install.sh | sh -s
+```
+
+<Note>
+On Windows Git Bash, if `curl` reports a `CRYPT_E_NO_REVOCATION_CHECK` revocation error, add `--ssl-no-revoke` after `curl`. Alternatively, clone the repository first and run `sh install.sh --agent trae` from inside it.
+</Note>
+
+**Option C — Clone then install**
+
+```bash
+git clone git@github.com:frcoder-lh/tack-harness.git
+cd tack-harness
+
+sh install.sh                        # Interactive (recommended)
+sh install.sh --agent trae           # Install for TRAE
+sh install.sh --list                 # List all supported agents
+sh install.sh --agent trae --dry-run # Preview what would be installed
+```
+
+### Initialize the project space
+
+Open an empty directory and run:
+
+```
+/tack
+```
+
+Tack Harness detects that no space exists yet and triggers `init` automatically. During initialization the framework:
+
+1. Ensures Git is available locally (installing it per-platform if missing — via `winget` on Windows, the system package manager on Linux, or Homebrew on macOS)
+2. Copies the complete tack space skeleton into the current directory
+3. Initializes the directory as a Git repository and makes the first automatic commit
+4. Guides you to describe the project in one sentence (project name and keywords are extracted automatically)
+5. Scans for local repositories, symlinks them into `repo/`, or clones from a Git URL you provide
+
+After initialization the directory looks like this:
+
+```
+my-project/
+├── AGENTS.md            # Resident manual: core constraints + project info
+├── harness/             # Development process definitions (customizable, never overwritten by upgrades)
+│   ├── cmd/             #   Commands: routing declarations and execution instructions
+│   ├── agents/          #   Delegatable roles: parallel execution in isolated contexts
+│   ├── workflow/        #   Workflows: state machines and command orchestration
+│   ├── script/          #   Fixed-flow POSIX scripts
+│   │   └── hook/        #   Optional IDE Hook acceleration layer (disabled by default)
+│   ├── rule/            #   Business, code, and security rules
+│   ├── template/        #   Command, workflow, document, and workspace templates
+│   └── reference/       #   General methodology and complex standalone capabilities
+├── wiki/                # Shared knowledge (materialized on demand — starts empty)
+├── space/               # Workspaces: one directory per requirement
+├── repo/                # Main code repositories: read-only baseline copies
+└── .tack/               # Framework runtime data (gitignored, safe to clean anytime)
+```
+
+<Info>
+Git operations on `harness/`, `wiki/`, `AGENTS.md`, and files under `space/` are committed automatically by the framework at each command stage. You never run Git commands at the space root — only inside `space/<YYYYMMDD>-<branch>/repo/<name>/` worktrees.
+</Info>
+
+### Create a workspace for the requirement
+
+```
+/tack work user-login
+```
+
+`work` guides you through a short setup sequence:
+
+1. If the intent is vague, it offers three concrete candidate descriptions and asks you to pick one or clarify further.
+2. It generates three English kebab-case branch name candidates (e.g., `user-login`, `add-user-login`, `implement-user-login`) and asks you to confirm one.
+3. It infers which services are involved from the intent and the `service_repo_mapping` in `AGENTS.md`, then asks you to confirm the list.
+4. It runs `work.sh` to create the workspace at `space/20261001-user-login/` with a flat skeleton:
+   - `status.yaml` — the single stateful file (properties + todos + guidance)
+   - `input.md` — where you paste raw requirement text, PRD excerpts, and reference links
+   - `repo/<name>/` — a Git worktree for each confirmed repository, checked out to branch `user-login`
+5. It registers the workspace in the `AGENTS.md` project info block and displays a knowledge roster: existing wiki pages, related analysis documents (with freshness indicators), and a suggestion to run `ask` if any repository has no prior analysis.
+
+After `work` completes, add your raw requirement material:
+
+```
+# Edit space/20261001-user-login/input.md
+# Paste PRD excerpts, acceptance criteria, links to design docs,
+# and suggested analysis entry points for the AI.
+```
+
+### Run requirement analysis
+
+With `input.md` populated, run the three analysis commands in sequence. Each produces a document that becomes the input for the next, and each requires your manual confirmation before proceeding.
+
+```bash
+/tack spec
+```
+
+Reads `input.md`, the root `wiki/`, the workspace `wiki/`, and relevant code (located via `grep` — never a full-repo scan). Produces `spec.md` containing:
+- Story split
+- Systems and modules involved
+- Relationships, interactions, and boundaries
+- Acceptance criteria
+
+```bash
+/tack plan
+```
+
+For complex tasks, delegates `code-architect` subagents to produce at least two implementation options in parallel (minimum-change / clean-architecture / pragmatic-balance), presents a comparison table, and asks you to choose. Then produces `plan.md` with:
+- Low-coupling module breakdown with a dependency graph
+- Task list (written into both `plan.md` and `status.yaml tasks[]`)
+- Decision records for all technical choices made in this stage
+
+```bash
+/tack tech-design        # Optional — produces tech-design.md from the technical template
+```
+
+<Note>
+`testcode`, `test`, and `run` are **on-demand commands** — they do not occupy a slot on the main chain and never block `commit`, `push`, `merge`, or `close`. The AI will not proactively ask "shall we test?" after `code` completes. Trigger them yourself if and when you need unit-test consistency review, a system test plan, or script execution — not triggering them requires no "skipped" marker.
+</Note>
+
+### Develop, commit, merge, and close
+
+With the plan confirmed and tasks in `status.yaml`, run the development chain:
+
+**Code**
+
+```bash
+/tack code
+```
+
+Before writing any code, `code` verifies repository readiness: if the main repository is missing it routes to `create-repo`; if a worktree is missing it routes to `worktree`. Then it develops continuously per the task dependency graph in `status.yaml` — tasks with no dependencies run in parallel, tasks with dependencies run serially. It reuses existing logic where possible and only pauses at business decision points or module milestones. All changes land exclusively inside `space/20261001-user-login/repo/<name>/`.
+
+**Fix (on demand)**
+
+```bash
+/tack fix
+```
+
+If a deviation is found at any stage — in the requirement, design, or code — `fix` routes correctly: a requirement fix flows `spec → plan → code` keeping all documents in sync; a code fix flows `code → document sync`.
+
+**Fetch, commit, push**
+
+```bash
+/tack fetch     # Pull latest code for each repository (fetch only, no merge)
+/tack commit    # Auto-generates a Conventional Commits message and commits directly
+/tack push      # Pushes; guides you to associate a remote if none is configured
+```
+
+**Merge**
+
+```bash
+/tack merge
+```
+
+Delegates to a `code-reviewer` subagent (or three parallel instances for large changes — covering spec conformance, correctness/bugs, and conventions/security). The review conclusion routes to one of three outcomes:
+- **Fix now** — returns to `fix`, then re-reviews
+- **Record as follow-up** — logs to `status.yaml follow_ups` or an issue, then allows merge
+- **Keep as-is** — user confirms they accept the risk
+
+After the review, `merge` prefers raising an MR/PR on the platform. If conflicts are detected, it routes to `/tack solve` for guided, file-by-file resolution.
+
+**Close**
+
+```bash
+/tack close
+```
+
+Closes the workspace in four phases:
+
+1. **Delivery summary** — outputs a four-part summary: what was built, key decisions, changed files, and suggested next steps
+2. **Wiki distillation** — extracts reusable knowledge from the workspace artifacts (facts, navigation anchors, business knowledge, technical decisions) and — after your confirmation — writes them into the root `wiki/`
+3. **Self-evolution** — consumes all `raw` guidance entries in `status.yaml`, crystallizes them into `workflow`/`cmd`/`rule` entries, and verifies each landing point with `check-guidance.sh`
+4. **Cleanup** — removes worktrees and marks the workspace `completed` in `AGENTS.md`
+
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+Experience distillation happens automatically at `close`. Every time you guided, corrected, or added an agreement to the AI's approach during the task, that raw fact was silently collected in `status.yaml guidance[]`. At `close`, those raw entries are crystallized into permanent harness entries — new commands, updated workflow rules, or refined coding standards — so future tasks inherit the lessons from this one without any manual authoring.
 </Tip>
+
+## What's Next
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book-open" href="/concepts">
+    Understand command routing, workflow state machines, and the workspace model in depth.
+  </Card>
+  <Card title="Command Reference" icon="terminal" href="/commands/init">
+    Full table of all commands, short forms, and trigger phrases across all three groups.
+  </Card>
+  <Card title="Extension Mechanism" icon="puzzle-piece" href="/extending/custom-commands">
+    Learn how to add custom commands, workflows, and rules to your project harness.
+  </Card>
+  <Card title="Workspace Structure" icon="shield" href="/workflow/workspace-structure">
+    Understand worktree isolation, the Git dual boundary, and workspace anatomy.
+  </Card>
+</CardGroup>

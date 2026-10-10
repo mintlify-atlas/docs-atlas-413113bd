@@ -1,0 +1,212 @@
+---
+title: "Study: Learn from External Skills and Repositories"
+sidebarTitle: "Study"
+description: "Reads an external skill or repo, distils ideas, lands them via add/merge/optimise into harness files, then auto-commits and triggers one evolution pass."
+---
+
+The `study` command turns any external skill or repository into a structured learning exercise for your Tack Harness. Point it at a skill name, a local directory, or a Git URL, and it reads through the source, extracts every idea that could benefit your harness, maps each idea to the right landing location, and lands the changes — all without interrupting you for individual approvals. The sole confirmation point is a single unified preview at the end. After you confirm, it auto-commits and immediately triggers one `evolution` pass for inward review of everything just added.
+
+## Command Signature
+
+```bash
+/tack study <skill-name | local-path | git-url>
+# Aliases:
+/tack st              # short form
+/tack 学习            # Chinese trigger
+/tack 研习            # Chinese trigger
+/tack learn from      # natural language
+```
+
+## Parameters
+
+<ParamField path="source" type="string" required>
+  One of:
+  - **Git URL** — any URL starting with `http://`, `https://`, `git@`, `ssh://`, or ending with `.git`. Shallow-cloned to `$root/.tack/tmp/study-clone-<timestamp>/` and deleted after the session.
+  - **Local directory path** — an absolute or relative path that exists on disk. Read in place; never copied or modified.
+  - **Skill short name** — searched in the locally installed skills directory:
+    - Windows: `%USERPROFILE%\.trae-cn\skills\`, `%USERPROFILE%\.trae\skills\`
+    - macOS/Linux: `~/.trae-cn/skills/`, `~/.trae/skills/`
+</ParamField>
+
+## Prerequisites
+
+<Note>
+  The project must be a Tack space (`$root/harness/cmd/` must exist). The `source` parameter is mandatory — if it cannot be resolved to any real material, `study` explains why and stops. It never substitutes imagined content for a missing source.
+</Note>
+
+## What It Does
+
+<Steps>
+  <Step title="Locate and Acquire the Source Material">
+    Applies the parameter routing rules in order: Git URL → local path → skill short name. For Git URLs, runs:
+
+    ```bash
+    mkdir -p $root/.tack/tmp
+    git clone --depth 1 <url> $root/.tack/tmp/study-clone-<timestamp>
+    ```
+
+    Detects the material form:
+    - Contains `SKILL.md` (or equivalent entry like `skill.md`, `plugin.json`) → treated as a **skill**
+    - Otherwise → treated as a **general repository**
+
+    Records the source identifier (URL, absolute path, or skill name) — used in commit messages and the change report.
+  </Step>
+  <Step title="Read Through and Analyse the Structure">
+    Lists the directory tree (skipping `.git/`, `node_modules/`, build artefacts), identifies the organisation pattern (entry docs, commands/instructions, workflows, scripts, rules/standards, templates, prompts/agents, reference material, tests), then reads the entry file (`SKILL.md` / `README.md` / `AGENTS.md`) to establish the full picture before reading sub-directories.
+
+    For large sources, reading depth is prioritised by relevance to harness design — unrelated business code and examples are skimmed, not line-by-line.
+
+    Produces two lists:
+
+    **Borrowable-ideas list** — for each idea:
+    - Source location (relative path + section/line)
+    - Content summary (what problem it solves, how)
+    - Borrow type: workflow design / command design / rules & standards / script automation / template skeleton / prompt & routing / context & knowledge management / other
+    - Value to tack (which harness layer it improves, what gap it fills)
+
+    **Exclusion list** — ideas that duplicate existing tack capabilities, use an incompatible technology stack, or violate tack core conventions (e.g. requiring users to directly operate `$root` Git, destructive commands, forcing step-by-step confirmation). Each exclusion states its reason.
+  </Step>
+  <Step title="Map Ideas to Landing Points">
+    Re-reads the actual files in `$root/harness/` (cmd, workflow, rule, reference, script, template) and `$root/AGENTS.md` — never trusts cached context. For each borrowable idea assigns:
+
+    | Idea type | Landing location |
+    |---|---|
+    | Flow orchestration / state machine | `harness/workflow/` |
+    | Callable command capability | `harness/cmd/<group>/` |
+    | Cross-command reusable rule / criterion / format | `harness/rule/` |
+    | Large methodology, loaded on demand | `harness/reference/` |
+    | Deterministic mechanical steps | `harness/script/` (POSIX sh, exit-code gates) |
+    | Document skeleton | `harness/template/` |
+    | Must-always-be-active conventions | `$root/AGENTS.md` (core-constraints / distilled-conventions sections only — never the project-info YAML block) |
+
+    Each landing point is tagged with a disposition: **add** (no existing counterpart) / **merge** (incorporate into existing file) / **optimise** (enhance existing wording). Existing files are scanned for merge opportunities first — duplicate files are never created.
+
+    New commands and workflows are name-checked via:
+    ```bash
+    sh $root/harness/script/scan-routes.sh resolve $root/harness <candidate-name>
+    ```
+    A zero result (no current match) is required before any new command is created.
+  </Step>
+  <Step title="Back Up and Land Changes (no mid-process interruptions)">
+    Before touching any file, backs up the current harness:
+
+    ```bash
+    cp -r $root/harness $root/.tack/backup/study-<timestamp>/
+    ```
+
+    If `AGENTS.md` is modified, it is also copied into the backup.
+
+    **Landing principles**:
+    - **Add, merge, and optimise only** — nothing existing is deleted or weakened
+    - **Minimum-footprint edits**: only paragraphs related to a borrowable idea are touched; unrelated content is not rewritten
+    - Where a borrowed idea conflicts with existing design, the existing content wins; the new idea is recorded as a "pending replacement suggestion" for the preview (step 6), not silently applied
+    - New cmd/workflow files must have complete front matter (`command`/`workflow`, `short`, `triggers`, `summary`) matching the template structure
+    - Large methodology always goes to `reference/`; a one-line citation is added to the referencing `cmd` file — never embed rule detail directly in `cmd`
+    - Mechanical fixed steps discovered while landing are simultaneously crystallised as scripts in `harness/script/`, matching the existing script style
+
+    Records for each file: `file | add / merge / optimise | change summary | borrowable-idea ID`.
+  </Step>
+  <Step title="Self-Validate (fix failures immediately, do not surface to user)">
+    Runs the full validation suite and fixes any issues before the preview:
+
+    ```bash
+    sh $root/harness/script/scan-routes.sh list $root/harness
+    # All existing commands present; new commands registered; no name conflicts
+
+    sh $root/harness/script/scan-routes.sh resolve $root/harness <new-trigger>
+    # Each new trigger resolves to exactly one command (exit 0)
+    ```
+
+    New/modified scripts:
+    ```bash
+    sh -n <script>          # syntax check
+    <script> <minimal-args> # minimal use-case run; verifies exit-code semantics
+    ```
+
+    Checks all new file references (rule / reference / script / template paths) actually exist and all front-matter fields are complete. Confirms no existing command file was deleted and no existing workflow stage is missing.
+  </Step>
+  <Step title="Unified Preview (sole confirmation point)">
+    Outputs a single, comprehensive change report:
+
+    - **Learning source** — identifier and material form (skill / repository)
+    - **Borrowable-ideas list** — with borrow type and tack value
+    - **Exclusion list** — with reasons
+    - **Changed-files list**: `file path | add/merge/optimise | change summary | borrowable-idea ID`
+    - **Pending replacement suggestions** (highlighted separately) — items that would delete or replace existing content; none have been applied; user chooses here
+    - **Self-validation results** — route table, script syntax and minimal use cases, reference path integrity
+    - **Backup location** — for rollback
+
+    If adjustments are needed, the changes are made and self-validation reruns before showing another preview. Files the user explicitly rejects are restored from the backup. The loop continues until you confirm everything.
+  </Step>
+  <Step title="Commit After Confirmation">
+    Once confirmed:
+
+    ```bash
+    sh $root/harness/script/space.sh commit $root \
+      "chore(tack): study from <source-identifier>"
+    ```
+
+    If you reject the entire study:
+    - All files are restored from `$root/.tack/backup/study-<timestamp>/`
+    - No commit is made
+    - The analysis conclusions are preserved for your reference
+
+    **Cleanup**: the temporary clone directory (`$root/.tack/tmp/study-clone-<timestamp>`) is deleted. The backup (`$root/.tack/backup/study-<timestamp>/`) is retained for rollback.
+  </Step>
+  <Step title="Auto-Trigger Evolution">
+    Immediately after a successful commit, reads and executes a full `evolution` pass per `harness/cmd/base/evolution.md`:
+
+    - Enumerates all command files
+    - Identifies rule/reference/script/guidance candidates
+    - Outputs the candidate table
+
+    `study` does not exercise `evolution`'s confirmation authority — the candidate list is still yours to approve or reject. The evolution pass follows its own auto-commit convention.
+  </Step>
+</Steps>
+
+## Discipline
+
+<Warning>
+  Every conclusion in `study` must come from files actually read in the source material. Fabricating or inferring capabilities not present in the source is prohibited. The sole confirmation point is the unified preview in step 6 — `study` will not ask clarifying questions mid-analysis unless the source material simply cannot be located.
+</Warning>
+
+## Post-Completion Checklist
+
+```
+- [ ] Source is traceable (URL / absolute path / skill name); all analysis is grounded in actually-read files
+- [ ] Borrowable-ideas list and exclusion list are complete; all exclusions have stated reasons
+- [ ] Every landed change maps to a specific borrowable idea; landing points checked against existing files (no duplicate files created)
+- [ ] No existing command, rule, script, template, or convention was deleted; replacement ideas are "pending suggestions" only, decided by user
+- [ ] scan-routes route table is complete and has no name conflicts; new triggers resolve uniquely; scripts pass sh -n and minimal use case; all reference paths exist
+- [ ] Changes landed and committed only after unified preview confirmed by user; commit message contains source identifier
+- [ ] .tack/tmp/ temporary clone directory cleaned up; backup/study-<timestamp>/ retained
+- [ ] Evolution pass triggered after commit; candidates reviewed per evolution rules
+```
+
+## Compared to Related Commands
+
+<CardGroup cols={2}>
+  <Card title="evolution" icon="arrows-spin" href="/commands/evolution">
+    Looks **inward** — audits your existing harness files to extract rules, references, and scripts. No external source required.
+  </Card>
+  <Card title="record" icon="pen-to-square" href="/commands/record">
+    Distils **specific content you name** — a convention, a fact, a command idea, or raw guidance you captured during a task.
+  </Card>
+  <Card title="update" icon="arrow-up-right-dots" href="/commands/update">
+    Upgrades from an **older version of the same skill** to a newer one — same project, version delta.
+  </Card>
+  <Card title="study" icon="graduation-cap">
+    Learns from a **third-party skill or repository** — external source, design ideas borrowed across projects.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Act on Evolution Candidates" icon="seedling" href="/commands/evolution">
+    Review the candidates proposed by the auto-triggered `evolution` pass and crystallise the most valuable additions.
+  </Card>
+  <Card title="Verify the Route Table" icon="list" href="/commands/help">
+    Run `help` to see the updated command list and confirm new commands are correctly registered.
+  </Card>
+</CardGroup>

@@ -1,0 +1,138 @@
+---
+title: "Installing Tack Harness into Your AI Agent"
+sidebarTitle: "Installation"
+description: "Four ways to install Tack Harness as an agent skill: agent-based URL install, one-line curl script, clone-and-install, and archive download from Releases."
+---
+
+Tack Harness is installed as a **skill** into your AI coding agent — not as a project dependency or CLI tool. Once the skill is in place, every new conversation with your agent has access to the full `/tack` command set; no per-project setup is required until you run `/tack` to initialize your first workspace. The framework supports nine agents out of the box: TRAE (China and international editions), Cursor, Windsurf, Cline, Codeium, Aider, DevBox, and Claude Code.
+
+<Tabs>
+  <Tab title="Agent Install (Recommended)">
+    The simplest way to install Tack Harness is to ask your agent to do it for you. Open a conversation with your AI agent and type:
+
+    ```
+    Install this skill: https://github.com/frcoder-lh/tack-harness
+    ```
+
+    The agent fetches the repository, runs the install script, and places the skill in the correct directory for your agent automatically. This method works in TRAE, Cursor, Windsurf, and any agent that supports skill installation from a URL.
+
+    <Tip>
+      This is the recommended approach for first-time users — no terminal, no Git, no manual steps.
+    </Tip>
+  </Tab>
+
+  <Tab title="One-line Script">
+    If you have `curl` available, you can install without cloning the repository first. The script auto-detects which agents are installed on your machine and prompts you to pick one:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/frcoder-lh/tack-harness/master/install.sh | sh -s
+    ```
+
+    To skip the interactive prompt and target a specific agent directly, pass `--agent`:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/frcoder-lh/tack-harness/master/install.sh | sh -s -- --agent trae
+    ```
+
+    The script downloads the repository archive to a temporary directory, installs the skill, then cleans up automatically.
+
+    <Note>
+      On Windows Git Bash, if `curl` reports a `CRYPT_E_NO_REVOCATION_CHECK` error (the schannel backend cannot reach the certificate revocation service), add `--ssl-no-revoke` after `curl -fsSL`. See the [Windows Setup](/installation/windows) page for details.
+    </Note>
+  </Tab>
+
+  <Tab title="Clone and Install">
+    Clone the repository and run the install script directly. This gives you the most control and lets you inspect or modify the skill files before installing.
+
+    ```bash
+    git clone git@github.com:frcoder-lh/tack-harness.git
+    cd tack-harness
+    sh install.sh                        # Interactive install — detects installed agents
+    sh install.sh --agent trae           # Install for TRAE international
+    sh install.sh --agent trae-cn        # Install for TRAE China edition
+    sh install.sh --agent trae,cursor    # Install for multiple agents at once
+    sh install.sh --list                 # List all supported agent presets
+    sh install.sh --agent trae --dry-run # Preview what would be installed without copying
+    ```
+
+    <Tip>
+      Use `--dry-run` first to see exactly which files would be copied and where — no changes are made to your system.
+    </Tip>
+  </Tab>
+
+  <Tab title="Download Archive">
+    If you cannot use Git, download a ZIP archive from the [Releases page](https://github.com/frcoder-lh/tack-harness/releases). Archives are named `tack-harness-V<version>.zip` and contain the repository root files with no outer directory wrapper.
+
+    ```bash
+    mkdir tack-harness
+    unzip tack-harness-V0.0.1.zip -d tack-harness
+    cd tack-harness
+    sh install.sh
+    ```
+
+    This method is useful for air-gapped environments or when you need to pin a specific version.
+  </Tab>
+</Tabs>
+
+## Install Script Flags
+
+All install methods ultimately run `install.sh`. The following flags are available regardless of how you invoke it:
+
+| Flag | Description |
+|------|-------------|
+| `--agent <name>` | Install to a specific agent preset; use commas for multiple (e.g. `trae,cursor`) |
+| `--target <path>` | Install to a custom directory instead of an agent preset |
+| `--list` | Print all supported agent presets with their detection and install paths |
+| `--dry-run` | Preview the files that would be copied without making any changes |
+| `--force` | Overwrite existing skill files; without this flag, existing files are skipped |
+
+<Note>
+  `--agent` and `--target` are mutually exclusive. Use `--target` only when your agent is not in the preset list.
+</Note>
+
+## Supported Agents
+
+The following agent presets are built into the install script. Pass the name in the `Name` column to `--agent`:
+
+| Name | Agent |
+|------|-------|
+| `trae-cn` | TRAE China edition |
+| `trae` | TRAE international edition |
+| `cursor` | Cursor |
+| `windsurf` | Windsurf |
+| `cline` | Cline |
+| `codeium` | Codeium |
+| `aider` | Aider |
+| `devbox` | DevBox |
+| `claude` | Claude Code |
+
+Run `sh install.sh --list` at any time to see the full list along with the detection directory and install path for each preset.
+
+## After Installation
+
+<Steps>
+  <Step title="Restart your agent or reload skills">
+    The new skill files need to be picked up by the agent. Restart the agent application, or use the agent's built-in skill reload option if it has one.
+  </Step>
+  <Step title="Verify the skill is working">
+    Open a new conversation and type:
+
+    ```
+    /tack
+    ```
+
+    The agent should respond with the Tack Harness initialization prompt or the help overview. If it does not, check that the skill was installed to the correct directory (`sh install.sh --list` shows expected paths) and that you restarted after installation.
+  </Step>
+  <Step title="Initialize your first workspace">
+    Navigate to an empty project directory and follow the [Quickstart](/quickstart) guide to run `/tack` for the first time. The `init` command will set up the full space skeleton, connect your repositories, and walk you through creating your first work item.
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Initialize a workspace and run your first requirement from spec to merge.
+  </Card>
+  <Card title="Windows Setup" icon="windows" href="/installation/windows">
+    Install and run Tack Harness on Windows via Git Bash or PowerShell.
+  </Card>
+</CardGroup>

@@ -1,0 +1,192 @@
+---
+title: "Defining Custom Workflows for Repeatable Processes"
+sidebarTitle: "Custom Workflows"
+description: "Create a Tack workflow by adding a Markdown file to harness/workflow/ with a state machine definition and command orchestration map."
+---
+
+A Tack workflow is a state machine combined with command orchestration. When the AI detects a workflow trigger phrase in the user's input, it loads the workflow definition and drives all subsequent commands according to the state transitions defined in the file. Each workflow defines which `status` values are legal in `status.yaml`, what each stage produces, and how stages are sequenced — without duplicating any command body (command files in `harness/cmd/` remain the single authority for each command's steps).
+
+## Workflow Frontmatter Schema
+
+Like commands, workflows are plain Markdown files. The YAML frontmatter at the top is the injection declaration that `scan-routes.sh` picks up at runtime:
+
+```yaml
+---
+workflow: my-workflow
+short: mwf
+triggers: my workflow, run my process, /mwf
+summary: What this workflow does in one sentence
+---
+```
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `workflow` | ✅ | Primary workflow name. Must match the filename stem (`my-workflow.md` → `workflow: my-workflow`). Also accepts `<name>-workflow.md` naming. |
+| `short` | ⚠️ Recommended | Short abbreviation used as a trigger (e.g. `mwf`). |
+| `triggers` | ✅ | Comma-separated phrases that activate the workflow. Chinese and English both supported. |
+| `summary` | ✅ | One sentence describing the workflow's purpose and when to use it. |
+
+## Workflow File Structure
+
+Every workflow file has four required sections. Unlike commands (which have an entry gate and execution steps), workflows define a state machine and map each state to a command:
+
+<Steps>
+  <Step title="Applicability">
+    Describes the intent that activates this workflow versus other workflows. The AI reads this section to distinguish between workflows with overlapping triggers.
+
+    ```markdown
+    ## 适用场景
+
+    Use this workflow when the intent is to deploy a release to staging or production.
+    Distinct from the development workflow: this workflow starts after `merge` completes,
+    not before. For hotfixes, use the bugfix workflow instead.
+    ```
+  </Step>
+
+  <Step title="State Transitions">
+    The state machine: every legal value of the `status` field in `status.yaml`, what each means, and the condition for entering it. Any stage may enter `blocked` if a blocking condition is encountered.
+
+    ```markdown
+    ## 状态流转
+
+    initialized → preparing → deploying → verifying → completed
+                    \            \
+                     └────────── blocked
+
+    | 状态       | 含义             | 进入条件                    |
+    |------------|------------------|-----------------------------|
+    | initialized | 工作区已创建    | `work` 完成                 |
+    | preparing  | 准备发布清单     | 发布核查完成                |
+    | deploying  | 执行部署脚本     | 准备完成并用户确认          |
+    | verifying  | 验证部署结果     | 部署脚本退出 0              |
+    | completed  | 工作完成并收尾   | 终态                        |
+    | blocked    | 等待阻塞条件恢复 | 任意阶段出现阻塞            |
+    ```
+  </Step>
+
+  <Step title="Stage-to-Command Mapping">
+    A table mapping each stage to the command that drives it, its expected output, and the resulting `status`/`progress` fields after it completes.
+
+    ```markdown
+    ## 各环节与命令映射
+
+    | # | 环节     | 命令                  | 产物                    | 完成后状态     |
+    |---|----------|-----------------------|-------------------------|----------------|
+    | 1 | 准备     | `/tack release-check` | `$work/release-check.md`| preparing      |
+    | 2 | 部署     | `/tack run`           | deploy output           | deploying      |
+    | 3 | 验证     | `/tack test`          | test results            | verifying      |
+    | 4 | 收尾     | `/tack close`         | workspace closed        | completed      |
+    ```
+  </Step>
+
+  <Step title="Stage Descriptions">
+    Detailed per-stage instructions: what inputs each stage needs, what the AI actually does (which files to read, which scripts to run), which reference files to consult if needed, and any blocking conditions that transition the workflow to `blocked`.
+
+    ```markdown
+    ## 各环节说明
+
+    1. **准备**
+       - 输入: 目标发布环境（用户确认）
+       - 动作: 按 `/tack release-check` 生成发布核查清单
+       - 完成后: 更新 `status.yaml` → `status: preparing`
+
+    2. **部署**
+       - 输入: `$work/release-check.md`（逐条检查确认无阻塞项）
+       - 动作: 执行部署脚本，记录输出
+       - 阻塞条件: 核查清单中存在未确认项 → `status: blocked`
+    ```
+  </Step>
+</Steps>
+
+## State Transitions in Practice
+
+The five built-in workflows show the full range of state-machine patterns. The development workflow demonstrates linear progression with an optional `blocked` escape:
+
+```
+initialized → planning → developing → reviewing → merged → completed
+                \           \             \
+                 └────────── blocked ──────┘
+```
+
+State values written here are **the exact strings** that `work-status.sh` writes to the `status` field in `status.yaml`. The workflow file defines which values are valid; `work-status.sh` enforces the write. At every stage transition, the script also updates:
+
+- `current.stage` — the current stage name
+- `current.task` — the task the AI is working on right now
+- `current.next` — the next expected action (or the blocking reason when `status: blocked`)
+- `progress` — the boolean switch for each stage
+
+## The Blocked State
+
+Any stage in any workflow can transition to `blocked`. The blocking reason is written to `current.next` in `status.yaml` so the AI always knows what it is waiting for. When the blocking condition is resolved, the workflow returns to the original state:
+
+```yaml
+# status.yaml when blocked
+status: blocked
+current:
+  stage: deploying
+  task: deploy to production
+  next: "Waiting for DB migration sign-off from DBA team"
+```
+
+The `blocked` state is not a terminal state. Once the user reports the block is resolved, the workflow resumes from the stage it left.
+
+## Placing the File
+
+Copy the template, rename it, and fill in the frontmatter and sections:
+
+```bash
+cp harness/template/workflow.md harness/workflow/my-workflow.md
+# Edit the frontmatter: set workflow:, short:, triggers:, summary:
+# Fill in the four required sections
+```
+
+The template (`harness/template/workflow.md`) includes the full section skeleton and a status-table placeholder, so all required structure is in place from the start.
+
+## Verifying the Workflow Registers
+
+```bash
+# List all registered workflows
+sh harness/script/scan-routes.sh workflows harness
+
+# Confirm a trigger phrase routes to your workflow
+sh harness/script/scan-routes.sh resolve harness "run my process"
+```
+
+Exit code `0` from `resolve` means the trigger is unique and routes cleanly to your workflow. Exit code `2` means the trigger conflicts with another workflow or command — adjust the `triggers` field to resolve the clash.
+
+<Note>
+Run `sh harness/script/lint-harness.sh harness` to catch structure issues early. For workflows, it checks that the frontmatter is well-formed, that required fields are present, and that no trigger token conflicts with an existing command or workflow.
+</Note>
+
+## Using Custom Workflows Alongside Custom Commands
+
+Workflows orchestrate existing commands. A workflow's stage mapping table references commands by their `/tack <name>` invocation — it does not duplicate command bodies. The recommended authoring order is:
+
+<Steps>
+  <Step title="Create any new commands first">
+    If a stage in your workflow needs a command that does not yet exist, create it first (either via `/tack record` or by copying `harness/template/cmd.md`). Verify it registers with `scan-routes resolve`.
+  </Step>
+  <Step title="Write the workflow">
+    Copy `harness/template/workflow.md`. Reference the new commands in the stage-to-command mapping table. Use their exact `/tack <name>` invocations so the mapping is unambiguous.
+  </Step>
+  <Step title="Verify end-to-end">
+    Run `scan-routes list harness` to confirm both the new commands and the new workflow appear in the route table. Run `lint-harness.sh harness` to check that all four workflow sections are present and no trigger tokens conflict.
+  </Step>
+</Steps>
+
+## Status Writeback Requirement
+
+Every workflow must document its `status.yaml` writeback requirement in the file. The standard convention, copied from the built-in template:
+
+```markdown
+## 状态回写要求
+
+- Before each stage: update `$work/status.yaml` fields
+  `current.stage` / `current.task` / `current.next` and `updated_at`
+- After each stage completes with human confirmation:
+  set the corresponding `progress` switch to `true` and advance `status`
+- When blocked: set `status: blocked` and write the blocking reason
+  and waiting item into `current.next`
+```
+
+The `work-status.sh` script performs the actual writes — the workflow file declares the writeback requirement so the AI knows which fields to update and when.

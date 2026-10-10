@@ -1,0 +1,137 @@
+---
+title: "Bugfix Workflow: Diagnose, Fix, and Trace Defect Origin"
+sidebarTitle: "Bugfix"
+description: "Tack's bugfix workflow covers reproducing, diagnosing, fixing, and verifying defects, with automated defect origin tracing via git-bug-trace that links bugs to the MR that introduced them."
+---
+
+The bugfix workflow (`bugfix`) is Tack's dedicated state machine for defect repair and production issue diagnosis. It activates when a bug or error is reported, enforces a reproduce-before-fix discipline, and — once the defective code line is located — automatically traces the defect to its introducing commit, author, requirement ticket, and the MR that merged it into the main branch. Results are written to the `bug_origin` block in `status.yaml`, making defect origin a first-class fact in every fix workspace.
+
+## Trigger Words
+
+The bugfix workflow activates when Tack detects any of these intents:
+
+- `fix bug`, `fix defect`, `troubleshoot`, `/bug`
+- `bugfix workflow`, `bugfix`
+- Chinese: `改bug工作流`, `修bug`, `修缺陷`, `排障`
+
+**Boundary**: Use `development` for pure new features with no defect. Use `testing` for adding tests without fixing a defect.
+
+## State Transitions
+
+```
+initialized → reproducing → diagnosing → fixing → verifying → completed
+                    \           \          \         \
+                     └──────── blocked (cannot reproduce / missing info / awaiting dependency)
+```
+
+| State | Meaning | Entry Condition |
+|-------|---------|-----------------|
+| `initialized` | Defect logged (symptoms, environment, entry point) | User describes the problem and confirms workspace |
+| `reproducing` | Constructing stable reproduction | Reproduction steps or a failing test case being built |
+| `diagnosing` | Root-cause analysis in progress | Bug is reproducible; examining code/logs/data |
+| `fixing` | Code fix in progress | Root cause confirmed and approved by user |
+| `verifying` | Fix verification — regression + related paths | Fix code complete |
+| `completed` | Fix delivered | Verification passed, user confirmed, committed and pushed |
+| `blocked` | Stalled | Cannot reproduce / root cause uncertain / awaiting logs or data |
+
+## Stage Breakdown
+
+<Steps>
+  <Step title="Log Symptoms and Entry Point">
+    Record the observed behavior, error logs, environment details, and reproduction steps in `input.md`. If the fix warrants an isolated branch, run `/tack work` to create a new workspace. Status advances to `initialized`.
+  </Step>
+  <Step title="Stable Reproduction (reproducing)">
+    Before touching any code, construct stable reproduction steps or a failing test case (using `testcode` as a vehicle). Blocked if the bug cannot be reliably reproduced — gather more data first. Never speculate and patch without confirmed reproduction.
+  </Step>
+  <Step title="Root-Cause Diagnosis (diagnosing)">
+    Follow the scientific method from `reference/diagnosing-bugs.md`: propose a hypothesis, collect evidence from code/logs/runtime, confirm or eliminate. Write the root-cause conclusion to the workspace document. Reusable findings (call-chain facts, recurring patterns) are reviewed by the user and distilled to `$root/wiki/`.
+  </Step>
+  <Step title="Defect Origin Tracing (diagnosing — mandatory once defective line is located)">
+    After pinpointing the defective code line, run `git-bug-trace.sh` to trace the defect's full origin. See the [Defect Origin Tracing](#defect-origin-tracing) section below for details. Results land in `status.yaml`'s `bug_origin` block.
+  </Step>
+  <Step title="Minimal Fix (fixing)">
+    Root cause must be user-approved before code changes begin. Only change code directly related to the defect — no opportunistic refactoring. Follow rules in `harness/rule/`. Changes are confined to the worktree at `space/<YYYYMMDD>-<branch>/repo/`.
+  </Step>
+  <Step title="Verify and Prevent Regression (verifying)">
+    Add a test that reproduces the original failure (it should go from red to green after the fix). Run related path regression tests. Both the new test and all existing related tests must pass before proceeding.
+  </Step>
+  <Step title="Commit and Push (completed)">
+    Run `/tack commit` — the auto-generated message should explain the symptom, root cause, and fix method (e.g., `fix(scope): ...`). Then `/tack push` and optionally `/tack merge`.
+  </Step>
+</Steps>
+
+## Defect Origin Tracing
+
+Once the defective code line is located during diagnosis, the bugfix workflow calls `harness/script/git-bug-trace.sh` to trace the defect's introduction history. This is mandatory — it runs before any fix code is written.
+
+**Script invocation:**
+
+```bash
+sh harness/script/git-bug-trace.sh <repo> <file> <line> [end-line] [target-branch]
+
+# Example: trace line 87 in auth/login.go, tracing back to main
+sh harness/script/git-bug-trace.sh repo/backend auth/login.go 87 main
+```
+
+**What it traces:**
+
+| Field | Description |
+|-------|-------------|
+| `introduced_commit` | Hash of the commit that introduced the defective code |
+| `introduced_commit_url` | Commit link (derived from remote URL) |
+| `introduced_at` | Introduction timestamp (ISO 8601) |
+| `introduced_by` | Author who introduced the defect |
+| `requirement` | Related requirement/ticket ID extracted from the commit message (e.g., `#123`, `MEEGO-456`) |
+| `merge_commit` | Hash of the merge commit that brought this commit into the main branch |
+| `merge_subject` | Merge commit title (usually contains the MR/PR number) |
+| `merge_url` | Link to the MR/PR on GitHub, GitLab, or Bitbucket |
+| `target_branch` | The target main branch used during tracing (`master`/`main`) |
+| `note` | Explanation if no merge commit was found (e.g., history was rewritten via rebase/cherry-pick) |
+
+**Example `bug_origin` block in `status.yaml`:**
+
+```yaml
+bug_origin:
+  repo: "backend"
+  file: "auth/login.go"
+  line: "87"
+  introduced_commit: "a3f8c12d"
+  introduced_commit_url: "https://github.com/org/backend/commit/a3f8c12d"
+  introduced_at: "2025-11-14T10:32:00Z"
+  introduced_by: "jane.doe"
+  requirement: "MEEGO-1042"
+  merge_commit: "b7e1a990"
+  merge_subject: "Merge branch 'feature/user-auth' into main (!341)"
+  merge_url: "https://github.com/org/backend/pull/341"
+  target_branch: "main"
+  note: ""
+```
+
+<Tip>
+Defect origin tracing helps distinguish requirement-introduced defects from legacy ones. The MR link lets you trace back to the original review conclusions and related changes — enabling a complete picture of what was reviewed, what was missed, and whether sibling changes in the same MR carry similar risks. When `--ancestry-path` cannot find a merge commit (because history was rewritten via rebase or cherry-pick), the note field records the reason and the introducing commit itself is still captured.
+</Tip>
+
+## Status Writeback
+
+`work-status.sh` writes back state at each stage transition:
+
+```bash
+# Advance to diagnosing state
+sh harness/script/work-status.sh space/20261001-fix-login/status.yaml \
+  set status diagnosing stage diagnose next "Run git-bug-trace on auth/login.go:87"
+
+# Record fix progress
+sh harness/script/work-status.sh space/20261001-fix-login/status.yaml \
+  set status fixing stage fix next "Implement minimal fix for null session guard"
+
+# Mark completed
+sh harness/script/work-status.sh space/20261001-fix-login/status.yaml \
+  set status completed
+```
+
+Key rules:
+- Hypotheses that are not yet confirmed by evidence must **not** advance the state to `fixing`
+- Root cause conclusion and the proposed fix both require user confirmation before entering `fixing`
+- `bug_origin` is written by `git-bug-trace.sh` output during `diagnosing` and is never manually edited
+- After verification passes and commit/push succeeds, status is set to `completed`
+- If the fix uncovers reusable diagnostic knowledge, use `/tack record` to distill it to `wiki/` or `rule/`

@@ -1,0 +1,118 @@
+---
+title: "Run: Script Execution Manager with Secure Credential Handling"
+sidebarTitle: "Run"
+description: "On-demand script runner for workspace tasks. Initializes run/ when absent (run.md + gitignored local/), then executes scripts per checklist. Sensitive data always goes in run/local/ — never hardcoded."
+---
+
+The `run` command manages script execution for a workspace. It auto-detects its mode: when `$work/run/` doesn't exist yet, it initializes the directory skeleton and prompts you to add your scripts and credentials; when `$work/run/run.md` already exists, it loads the script checklist and executes each entry in order. Sensitive data such as API tokens, database credentials, and account details must always be placed in `run/local/` — a gitignored subdirectory that is never committed. Like all testing and execution commands, `run` is on-demand and does not block commits or merges.
+
+<Warning>
+  **`run` is on-demand only.** Scripts are never executed automatically. Skipping `run` does not block committing, merging, or closing a workspace. Trigger this command only when you want to initialize the execution environment or run the scripts in `run.md`.
+</Warning>
+
+## Command Signature
+
+```bash
+/tack run [init]
+# Aliases:
+/tack rn          # short form
+```
+
+**Triggers:** `运行`, `执行`, `跑脚本`, `执行脚本`, `run`, `execute`, `run script`
+
+Passing `init` explicitly forces the initialization mode even when `run/` already exists.
+
+## When Not to Use `run`
+
+| Scenario | Use Instead |
+|----------|-------------|
+| Generating a test plan without executing scripts | `test` |
+| Building or running the code under development (build verification) | `code` (internal build step) |
+
+## Two Modes
+
+<Tabs>
+  <Tab title="Mode 1: Initialize run/">
+    **Trigger:** `$work/run/` does not exist, or the user explicitly passes `init`.
+
+    <Steps>
+      <Step title="Create the Directory Skeleton">
+        Creates `$work/run/` and `$work/run/local/`.
+
+        ```
+        $work/run/
+        ├── run.md          # Execution guide: prep, script list, conventions
+        └── local/          # gitignored — for credentials, tokens, accounts
+        ```
+
+        `run/local/` is covered by `.gitignore` globally — its contents are never committed to version control.
+      </Step>
+      <Step title="Generate run.md">
+        Copies `harness/template/run.md` to `$work/run/run.md`. The template contains three sections:
+
+        - **Pre-execution preparation** — environment checks, dependency setup
+        - **Script list and execution order** — table of scripts with paths, run commands, and dependencies
+        - **Execution conventions** — how to handle failures, how to re-run a step
+      </Step>
+      <Step title="Prompt for Credentials">
+        Tells the user to place sensitive information — API keys, tokens, passwords, account credentials — in files under `$work/run/local/` (e.g., `local/credentials.sh`, `local/.env`). Scripts must read from that directory and must never hardcode sensitive values.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Mode 2: Execute Scripts">
+    **Trigger:** `$work/run/run.md` exists and the user did not pass `init`.
+
+    <Steps>
+      <Step title="Load run.md">
+        Reads the "Script list and execution order" table from `run.md`. Parses each entry's path, run command, and dependencies.
+      </Step>
+      <Step title="Pre-execution Checks">
+        Verifies that:
+        - All script files listed in the table actually exist.
+        - All credential files required by the scripts are present in `run/local/`. If any are missing, `run` stops and prompts the user to add them — it does not continue or guess values.
+      </Step>
+      <Step title="Execute in Order">
+        Runs each script in the table order. Before each script, one sentence describes what it does. After each script, reports the exit code and key output lines.
+
+        If a script exits with a non-zero code, **all subsequent scripts are halted**. The failure reason is reported, and the user decides whether to fix and re-run or abort.
+
+        Steps that require manual intervention wait for user confirmation before continuing.
+      </Step>
+      <Step title="Write Completion Status">
+        Executes:
+        ```bash
+        sh $root/harness/script/work-status.sh $work/status.yaml \
+          set stage run progress.run true next "<execution result summary>"
+        ```
+        (Initialization mode does not set `progress.run`.)
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/run/run.md" icon="file-lines">
+    Execution guide with pre-execution preparation steps, the ordered script list, and execution conventions. Created during initialization.
+  </Card>
+  <Card title="$work/run/local/" icon="lock">
+    Gitignored directory for sensitive data. Never committed. Created during initialization; populated by the user before execution.
+  </Card>
+</CardGroup>
+
+## Security Model
+
+<Warning>
+  **Never hardcode credentials, tokens, or account details in scripts.** All sensitive values must be stored in `run/local/` and read from there at runtime. This directory is globally gitignored and will never enter version control.
+</Warning>
+
+<Info>
+  When `test` needs automation scripts, it calls `run`'s initialization flow automatically. You do not need to run `run init` manually in that case.
+</Info>
+
+## Next Steps
+
+- **After initialization:** Fill `run/local/` with credentials, then add script entries to `run.md`. Run `run` again to execute.
+- **After execution:** Return to `test` to verify test case outcomes against `test.md`.
+- Script execution (or the lack of it) never blocks `commit` or `merge`.

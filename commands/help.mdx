@@ -1,0 +1,127 @@
+---
+title: "Help: Browse All Commands, Workflows, and Triggers"
+sidebarTitle: "Help"
+description: "Runs scan-routes.sh live to show every workflow and command with triggers, short forms, and parameters. Always reflects your actual local harness state."
+---
+
+The `help` command gives you a real-time map of everything Tack Harness can do. Instead of a static list, it executes `scan-routes.sh` at call time — scanning every Markdown file in `harness/workflow/` and `harness/cmd/` — so the output always reflects the actual state of your local harness, including any custom commands or workflows you have added. It also runs an update check so you never miss a new release.
+
+## Command Signature
+
+```bash
+/tack help [workflow-or-command-name]
+# Aliases:
+/tack h              # short form
+/tack 帮助           # Chinese trigger
+/tack commands       # natural language
+```
+
+## Parameters
+
+<ParamField path="name" type="string" optional>
+  A workflow name, command name, or trigger word. When supplied, `help` resolves and displays full detail for that single item — its triggers, applicable scenario or preconditions, and a content summary. Omit to see the full route table.
+</ParamField>
+
+## What It Does
+
+<Steps>
+  <Step title="Scan and Display Full Route Table">
+    Executes:
+    ```bash
+    sh $root/harness/script/scan-routes.sh list $root/harness
+    ```
+    The output is presented verbatim — first a **Workflows** table, then a **Commands** table grouped into three sections: **Project Space**, **Requirement Development**, and **Git**. Each row contains:
+
+    - Short form (e.g. `i`, `w`, `sp`)
+    - Chinese and English trigger words
+    - Parameters
+    - One-line summary
+    - Source file path
+  </Step>
+  <Step title="Handle Non-Tack-Space Directories">
+    When run outside a Tack space (no `$root/AGENTS.md`), only an initialisation prompt is shown: the full route table is omitted and the user is guided to run `/tack` in an empty directory.
+  </Step>
+  <Step title="Show Single-Item Detail (with name argument)">
+    Executes:
+    ```bash
+    sh $root/harness/script/scan-routes.sh resolve $root/harness <name>
+    ```
+    Reads the resolved file and presents its trigger words, preconditions or applicable scenarios, and a content summary. The `workflow|` or `cmd|` prefix in the output determines which file to open.
+  </Step>
+  <Step title="Run Update Check">
+    Executes the version check per `harness/rule/update-check.md`:
+    ```bash
+    sh $root/harness/script/check-update.sh $root
+    ```
+    When a new version is available, the full update notice is reproduced verbatim in the Next Steps section, with the prompt: **"Say 'update' to upgrade."**
+  </Step>
+</Steps>
+
+## Route Table Layout
+
+The full route table produced by `scan-routes.sh list` is structured as follows:
+
+<Tabs>
+  <Tab title="Workflows">
+    One row per workflow file in `harness/workflow/`. Columns: workflow name, trigger words (Chinese + English), state transitions summary, and source file.
+
+    ```
+    Workflow           Triggers                     States
+    ──────────────────────────────────────────────────────────
+    development        需求开发 / dev / development  input→spec→plan→code→review→close
+    bugfix             修复 / fix / bugfix           locate→trace→patch→verify→close
+    branch-op          分支合并 / merge / rebase      preparing→integrate→close
+    ...
+    ```
+  </Tab>
+  <Tab title="Commands — Project Space">
+    Commands under `harness/cmd/base/`: `init`, `work`, `help`, `update`, `create-repo`, `record`, `evolution`, `study`.
+
+    ```
+    Cmd      Short  Triggers                       Summary
+    ──────────────────────────────────────────────────────────────────────
+    init     i      初始化, init, connect repo...  Initialise global context
+    work     w      工作区, workspace, new work...  Workspace management
+    help     h      帮助, commands, help           Show full route table
+    ...
+    ```
+  </Tab>
+  <Tab title="Commands — Requirement Dev">
+    Commands under `harness/cmd/dev/`: `spec`, `plan`, `tech-design`, `code`, `ask`, `commit`, `push`, `close`, and others.
+  </Tab>
+  <Tab title="Commands — Git">
+    Commands under `harness/cmd/git/`: `merge`, `solve`, `branch-op`, `release-check`, and others.
+  </Tab>
+</Tabs>
+
+<Info>
+  The route table is the **authoritative command list** — it is generated live from your harness files, not from a hard-coded registry. Custom commands you have added with `record` appear here automatically. Commands removed from disk disappear from the table.
+</Info>
+
+## Outputs
+
+| Output | Description |
+|---|---|
+| Workflows table | All registered workflows with triggers and state transitions |
+| Commands table | All registered commands grouped by section, with short forms, triggers, parameters, and summaries |
+| Single-item detail | Full preconditions, trigger words, and content summary for the named item |
+| Update notice | Reproduced verbatim if a newer version exists; silent if up to date |
+
+## Post-Completion Checklist
+
+```
+- [ ] User can see every workflow and command with its invocation syntax, short form, triggers, parameters, and summary
+- [ ] The list matches the actual harness/workflow and harness/cmd directory contents (scan-generated, not hand-written)
+- [ ] Version check has run; if a new version exists, the notice has been reproduced verbatim and "update" suggested
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Update Your Harness" icon="arrow-up-right-dots" href="/commands/update">
+    If a new version was reported, run `update` to pull in the latest scripts, templates, and workflows.
+  </Card>
+  <Card title="Explore a Command" icon="magnifying-glass">
+    Run `/tack help <command>` for full detail on any individual command or workflow, resolved live from its source file.
+  </Card>
+</CardGroup>

@@ -1,0 +1,153 @@
+---
+title: "Update: Upgrade Harness Scripts, Templates, and Workflows"
+sidebarTitle: "Update"
+description: "Fetches the latest release, shows all changes since your version, and merges or replaces files on confirmation. Custom cmd/ and rule/ are always preserved."
+---
+
+The `update` command keeps your Tack Harness installation current without destroying local customisation. It fetches the latest release from `skill_update_url`, shows you exactly what changed between your installed version and the newest one, detects any local modifications in `script/`, `template/`, `reference/`, `workflow/`, and `cmd/`, and walks through each divergence with you before writing a single byte. Custom commands (`cmd/`), rules (`rule/`), and your entire `AGENTS.md` project-info block are protected by design.
+
+## Command Signature
+
+```bash
+/tack update
+# Aliases:
+/tack u              # short form
+/tack 更新           # Chinese trigger
+/tack update skill   # natural language
+```
+
+## Parameters
+
+This command takes no parameters.
+
+## Prerequisites
+
+<Note>
+  The project must already be a Tack space with `AGENTS.md` present. `skill_update_url` defaults to `https://github.com/frcoder-lh/tack-harness`. `skill_version` is read from the `AGENTS.md` project-info block; if absent, it falls back to the `SKILL.md` version of the locally installed skill.
+</Note>
+
+## What It Does
+
+<Steps>
+  <Step title="Detect Version">
+    Reads `skill_version` from `AGENTS.md` (or the local `SKILL.md` if the field is empty). Fetches the latest release tag (`Vx.y.z`) from `skill_update_url`. If versions match and no local differences exist, reports "already up to date" and exits.
+
+    When a newer version is available, fetches `CHANGELOG.md` and `CHANGELOG.en.md` from the remote repository and displays all version sections between the local version (exclusive) and the latest (inclusive) — bilingual, side by side. If either language file is unavailable, that language is noted as missing and the process continues.
+  </Step>
+  <Step title="Update the Local Skill Installation">
+    Executes the fixed-flow update script:
+    ```bash
+    sh $root/harness/script/skill-update.sh <skill_update_url> <latest-tag> \
+      --tack-root $root/.tack
+    ```
+    This locates the locally installed skill directory, downloads the new release, backs up the old installation to `$root/.tack/backup/skill-<timestamp>/`, then overwrites it completely — clearing any files that existed only in the old version.
+
+    Temporary download artefacts land in `$root/.tack/tmp/` and are cleaned up on completion. **If the download fails, the update halts here** — subsequent steps compare against the new version, so proceeding without a successful skill update would produce stale diffs.
+  </Step>
+  <Step title="Detect Local Modifications">
+    Compares the updated skill's `tack/harness/` against `$root/harness/` for each updatable directory (`script/`, `template/`, `reference/`, `workflow/`, `cmd/`):
+
+    | Category | Meaning |
+    |---|---|
+    | **New** | File exists in new version, absent locally → added to the additions list |
+    | **Locally modified** | Same filename but different content → added to the merge-candidate list |
+    | **Identical** | Content matches → skipped |
+
+    `$root/.gitignore` is diffed separately against the skill's `.gitignore` template using the same three categories.
+
+    The following are **never compared and never overwritten**: `AGENTS.md`, user-created files in `cmd/`, everything under `rule/`, `wiki/`, and `space/`.
+  </Step>
+  <Step title="Extract Merge Points">
+    For each locally modified file, reads the diff and summarises each divergence as a single-sentence **feature point**, for example:
+
+    ```
+    File: harness/script/init-tack.sh
+      - Local feature:  added -n flag to prevent overwrite
+      - New version:    added winget fallback for Windows Git install
+      - Conflict:       different changes to the same git-init block
+    ```
+
+    Summaries are grounded in actual diff content — no guessing. Conflicts (same logical block changed on both sides) are flagged separately from clean additions.
+  </Step>
+  <Step title="User Confirms Each Merge Decision">
+    Presents the additions list and merge-candidate list. For each file you choose one of:
+
+    - **Use new version** — discard local changes, overwrite with the latest (local changes remain in the backup)
+    - **Keep local** — leave the file untouched
+    - **Merge** — AI merges the two feature sets, shows you the result, and writes only after your confirmation
+
+    A blanket strategy (e.g. "merge all") is accepted. No file is written until explicitly confirmed.
+  </Step>
+  <Step title="Back Up harness/">
+    Copies `$root/harness` to `$root/.tack/backup/harness-<timestamp>/` before any file is overwritten. The backup path is shown to the user with a note that abandoned local changes can be recovered from it.
+  </Step>
+  <Step title="Execute the Update">
+    Applies all confirmed decisions:
+    - New files → copied directly
+    - "Use new version" files → overwritten
+    - "Keep local" files → skipped
+    - "Merge" files → merged result written after confirmation
+    - `cmd/` → **additive only**: new command files are added, same-named files are never overwritten
+    - `.gitignore` → follows the same new/overwrite/keep/merge flow as `harness/` files
+
+    `AGENTS.md` is not touched during this step; `skill_version` is updated separately in the next step via `project.sh`.
+  </Step>
+  <Step title="Verify and Wrap Up">
+    1. Runs `scan-routes.sh list $root/harness` — confirms workflows and command routing are intact.
+    2. Runs `sh -n` syntax check on every file that went through "merge" — rolls back and alerts on failure.
+    3. Writes the new version number:
+       ```bash
+       sh $root/harness/script/project.sh skill-version $root <new-version> --no-commit
+       ```
+    4. Ensures `close`, `evolution`, `record`, and `help` contain the update-check step; ensures `.gitignore` ignores `.tack/` (one-time backfill for older spaces).
+    5. Shows backup location and a full **actual landing manifest** (new/overwritten/merged files listed one by one — no guessing).
+    6. Commits everything:
+       ```bash
+       sh $root/harness/script/space.sh commit $root "chore(tack): update harness"
+       ```
+  </Step>
+</Steps>
+
+## Protection Boundaries
+
+<CardGroup cols={2}>
+  <Card title="Always Replaced" icon="arrows-rotate">
+    `script/`, `template/`, `reference/`, `workflow/` — updated to the new version (subject to your merge decisions).
+  </Card>
+  <Card title="Additive Only" icon="plus">
+    `cmd/` — new command files are added; same-named files are **never overwritten**, preserving both stock and custom commands.
+  </Card>
+  <Card title="Fully Preserved" icon="shield-halved">
+    `rule/`, `wiki/`, `space/` — completely untouched by the update process.
+  </Card>
+  <Card title="Block-Level Protected" icon="lock">
+    `AGENTS.md` — only `skill_version` is updated via `project.sh`; the project-info block, custom rules, and all other content remain unchanged.
+  </Card>
+</CardGroup>
+
+<Warning>
+  If the skill download fails (no network, authentication error), `update` stops immediately. The local skill was not changed. Fix the connectivity issue and re-run `update`.
+</Warning>
+
+## Post-Completion Checklist
+
+```
+- [ ] scan-routes.sh list outputs workflows and all commands correctly
+- [ ] Local SKILL.md version has been updated to the latest tag (if step 2 ran)
+- [ ] All locally modified files have been processed per the confirmed strategy — no file left unresolved
+- [ ] Merged files pass sh -n syntax check; merged results were confirmed by the user
+- [ ] User-defined cmd files and rule/ are unchanged; AGENTS.md project info fields are intact
+- [ ] skill_version in AGENTS.md has been updated to the latest version number
+- [ ] close/evolution/record/help contain the update-check step; .gitignore ignores .tack/
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Review New Capabilities" icon="list" href="/commands/help">
+    Run `help` to see if new workflows or commands were added in this release.
+  </Card>
+  <Card title="Evolve Your Harness" icon="seedling" href="/commands/evolution">
+    Run `evolution` to audit existing commands and crystallise accumulated experience into rules and scripts.
+  </Card>
+</CardGroup>

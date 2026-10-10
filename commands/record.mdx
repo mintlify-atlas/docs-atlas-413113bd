@@ -1,0 +1,160 @@
+---
+title: "Record: Distil and Persist Reusable Harness Knowledge"
+sidebarTitle: "Record"
+description: "Classifies knowledge into agents, cmd, workflow, rule, or wiki; merges first; auto-generates command drafts from just a name; verifies via scan-routes."
+---
+
+The `record` command is Tack Harness's self-authoring mechanism — it is the command that writes other commands. Give it a piece of knowledge, a corrective instruction, or just say "distil recent guidance", and it classifies the content, scans existing harness entries for a match, merges if possible, and creates something new only when no suitable entry exists. For new commands, you supply only the `command` name; everything else (triggers, summary, parameters, flow body) is generated for you as a draft to review.
+
+## Command Signature
+
+```bash
+/tack record [content]
+# Aliases:
+/tack r              # short form
+/tack 记录           # Chinese trigger
+/tack 沉淀           # Chinese trigger
+/tack remember       # natural language
+/tack distill        # natural language
+```
+
+## Parameters
+
+<ParamField path="content" type="string" optional>
+  The knowledge to record. May be explicit text supplied directly, or omitted entirely — in which case `record` reads `guidance` entries with `status: raw` from `$work/status.yaml` and presents them as candidates. These raw guidance entries are instructions and corrections you gave during task execution that were automatically captured.
+</ParamField>
+
+## Two Trigger Modes
+
+<Tabs>
+  <Tab title="Explicit Content">
+    You supply the material directly — a corrective flow, a team convention, a wiki fact, a new command idea. `record` classifies it and finds a landing point.
+
+    ```
+    /tack record "When running database migrations, always back up
+    the target schema first and verify row counts after."
+    ```
+  </Tab>
+  <Tab title="Guidance Distillation">
+    You say something vague like "distil recent guidance" or just `record`. `record` reads all `guidance` entries with `status: raw` from the current workspace's `status.yaml` (or scans all workspaces when no current workspace is active), lists them as candidates, and lets you pick which ones to distil.
+
+    Raw guidance entries are automatically collected from your in-task instructions per AGENTS.md constraint 11 — they accumulate throughout development and are waiting to be crystallised here.
+  </Tab>
+</Tabs>
+
+## What It Does
+
+<Steps>
+  <Step title="Obtain Content">
+    Uses the parameter text if provided. Otherwise reads `guidance[status=raw]` entries from `$work/status.yaml`. If no `$work` context exists, scans all `$root/space/*/status.yaml` files and aggregates raw entries across workspaces.
+  </Step>
+  <Step title="Classify the Content">
+    Applies the rules in `harness/rule/record-classification.md` to assign one of five types:
+
+    | Type | Landing point | Examples |
+    |---|---|---|
+    | `agents` | `AGENTS.md` "distilled conventions" block | Team-wide coding constraints, always-on behaviour rules |
+    | `cmd` | `harness/cmd/<group>/` | New command, corrected command flow |
+    | `workflow` | `harness/workflow/` | New or amended multi-stage workflow |
+    | `rule` | `harness/rule/` | Coding standards, format rules, decision criteria |
+    | `wiki` | `$root/wiki/` | Factual knowledge, business understanding, ADRs |
+
+    When classification is ambiguous, `record` shows its reasoning and asks for confirmation.
+  </Step>
+  <Step title="Scan First — Merge or Create">
+    Before writing anything new, `record` does a full scan of the relevant landing zone:
+
+    - **cmd**: full semantic scan of all command files in `harness/cmd/`
+    - **workflow**: full scan of all workflow files in `harness/workflow/`
+    - **agents**: reads `AGENTS.md` — matches against numbered core-constraint entries and existing distilled-convention entries
+    - **rule / wiki**: reads the matching files in `harness/rule/` or `$root/wiki/`
+
+    **If a related entry is found**: shows you both and asks how to merge them (minimal edit, no rewriting of unrelated content; identical-meaning entries are updated, never duplicated).
+
+    **If no suitable entry exists**: proceeds to step 4 to create a new one.
+  </Step>
+  <Step title="Land the Content">
+    Executes the type-specific rule file:
+
+    - `agents` → `harness/rule/record-agents.md` (appends to the "distilled conventions" section, never touches the project-info YAML block or fixed harness sections)
+    - `cmd` → `harness/rule/record-cmd.md` (copies `template/cmd.md` into `harness/cmd/<group>/` with all front matter fields generated)
+    - `workflow` → `harness/rule/record-workflow.md` (copies `template/workflow.md` into `harness/workflow/`)
+    - `rule` → `harness/rule/record-rule.md` (creates or appends in `harness/rule/`)
+    - `wiki` → `harness/rule/record-wiki.md` (merges into or creates the relevant wiki file per template)
+
+    For **new commands**, only `command` is required from you — the full front matter (`short`, `triggers`, `summary`, `params`) and the body (preconditions, steps, post-checks, next steps) are auto-generated as a draft.
+  </Step>
+  <Step title="Human Review">
+    Shows you the file path and full content before anything takes effect. `agents` conventions and `wiki` entries specifically require your explicit approval before they become active context — they are loaded at the start of every session.
+  </Step>
+  <Step title="Verify and Write Back Guidance Status">
+    For `cmd` and `workflow` entries:
+    ```bash
+    sh $root/harness/script/scan-routes.sh list $root/harness
+    ```
+    Confirms the new or modified entry appears in the route table.
+
+    For `agents` entries, re-reads `AGENTS.md` and verifies position and block integrity.
+
+    When content came from `guidance` entries, writes back the result:
+    ```bash
+    # For distilled entries:
+    sh $root/harness/script/work-status.sh <status.yaml> guidance <id> \
+      distilled <landing-path...>
+
+    # For dismissed entries:
+    sh $root/harness/script/work-status.sh <status.yaml> guidance <id> dismissed
+    ```
+  </Step>
+  <Step title="Version Check">
+    Runs `check-update.sh $root`. If a newer version of Tack Harness is available, reproduces the update notice verbatim and **recommends running `update` before continuing to distil** — changes made on an old harness version may conflict with the new version's files.
+  </Step>
+  <Step title="Auto-Commit">
+    After review approval:
+    ```bash
+    sh $root/harness/script/space.sh commit $root \
+      "chore(tack): record distilled knowledge"
+    ```
+    Commits new and merged cmd, workflow, rule, wiki, and AGENTS.md distilled entries.
+  </Step>
+</Steps>
+
+## Rule Files Referenced
+
+| File | Purpose |
+|---|---|
+| `harness/rule/record-classification.md` | Five-type classification criteria, wiki sub-type breakdown, routing for ambiguous cases |
+| `harness/rule/record-agents.md` | Format, boundaries, and template for AGENTS.md "distilled conventions" block |
+| `harness/rule/record-cmd.md` | Scan-and-merge rules, new command template fields, group selection |
+| `harness/rule/record-workflow.md` | Scan-and-merge rules and new-workflow creation |
+| `harness/rule/record-rule.md` | Landing point and merge rules for coding/engineering standards |
+| `harness/rule/record-wiki.md` | Four wiki file roles, boundaries, source chain, contradiction/evolution handling |
+
+## Post-Completion Checklist
+
+```
+- [ ] Content type correctly classified (agents / rule / wiki / cmd·workflow)
+- [ ] Existing related entries were scanned first; new entry created only when no match found
+- [ ] For new cmd: only command was provided by user; all other fields were auto-generated and reviewed
+- [ ] File landed in the correct directory with complete front-matter fields
+- [ ] agents entry is in the "distilled conventions" block and did not touch the project-info YAML block or fixed sections
+- [ ] scan-routes shows new/modified cmd·workflow entries; AGENTS.md agent entry is correctly positioned
+- [ ] Guidance-sourced entries have been written back as distilled (with landing path) or dismissed
+- [ ] User has reviewed and confirmed the content
+- [ ] Version check ran; if new version available, update was suggested before further distillation
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Try Your New Command" icon="terminal">
+    New commands are immediately available — invoke with `/tack <trigger>` to verify the route resolves.
+  </Card>
+  <Card title="Evolve the Harness" icon="seedling" href="/commands/evolution">
+    Run `evolution` to audit all commands for rule/reference/script extraction opportunities and consume remaining raw guidance.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Wiki content recorded here is automatically retrieved during `spec` and `plan` execution — there is no need to manually reference it. AGENTS.md distilled conventions take effect immediately in the next session since AGENTS.md is loaded at context start.
+</Tip>

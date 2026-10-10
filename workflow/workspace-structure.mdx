@@ -1,0 +1,224 @@
+---
+title: "Workspace Structure and the status.yaml State File"
+sidebarTitle: "Workspace Structure"
+description: "Each Tack workspace lives under space/ and contains status.yaml, work documents, and git worktrees. Learn the full project layout, file lifecycle, and the anatomy of the single stateful file."
+---
+
+Every requirement in Tack gets its own workspace — a flat directory under `space/` that holds all work documents, the single stateful file `status.yaml`, and git worktrees for the involved code repositories. The directory name carries a creation-date prefix (e.g., `space/20261001-user-login/`), so sorting by name is equivalent to sorting by creation time. The git branch inside the worktree has no date prefix — only the directory name does.
+
+## Full Project Space Layout
+
+After running `/tack` in an empty directory, the complete project space structure looks like this:
+
+```
+my-project/
+├── AGENTS.md            # Resident manual: core constraints + project info
+│                        # (name/keywords/repo mapping/work list)
+├── harness/             # Development process definitions
+│                        # (requirement-agnostic, customizable, never overwritten by upgrades)
+│   ├── README.md        #   Usage guide for the harness
+│   ├── cmd/             #   Commands: discovery, routing, entry/exit gates
+│   ├── agents/          #   Delegatable roles: parallel execution in isolated contexts
+│   │                    #   (explorer / architect / reviewer)
+│   ├── workflow/        #   Workflows: state machines and command orchestration
+│   ├── script/          #   Fixed-flow shell scripts
+│   │   │                #   (init-tack, scan-routes, lint-harness, scan-secrets,
+│   │   │                #    check-guidance, work-status, space, project, repo, work,
+│   │   │                #    git-worktree-helper, git-fetch-helper, git-bug-trace,
+│   │   │                #    git-diff-context, branch-op, check-update, skill-update)
+│   │   └── hook/        #   Optional IDE Hook acceleration layer
+│   │                    #   (SessionStart / UserPromptSubmit / PreToolUse;
+│   │                    #    disabled and non-intercepting by default)
+│   ├── rule/            #   Business, code, and security rules
+│   │                    #   (coding-standards, security, git-boundary, context-loading,
+│   │                    #    windows-env, record-* distillation rules)
+│   ├── template/        #   Command, workflow, document, and workspace templates
+│   └── reference/       #   General methodology and complex standalone capabilities
+│                        #   (loaded only when referenced by commands/workflows/roles/rules)
+├── wiki/                # Shared knowledge base (see Wiki Files section below)
+├── space/               # Workspaces — one directory per requirement
+│   └── 20261001-user-login/   # Example workspace
+│       ├── status.yaml        # Single stateful file
+│       ├── input.md           # Raw requirement
+│       ├── spec.md            # Requirement planning doc
+│       ├── plan.md            # Development plan + task list
+│       ├── tech-design.md     # Technical review doc
+│       ├── wiki/              # Workspace-level analysis docs
+│       └── repo/
+│           └── backend/       # Git worktree (only writable code area)
+├── repo/                # Main code repositories (read-only baseline)
+└── .tack/               # Framework-local runtime data (gitignored, never committed)
+                         # (log/, backup/, tmp/, state/)
+```
+
+## Workspace Files
+
+Each workspace under `space/<YYYYMMDD>-<branch>/` uses a flat structure. Files are created on-demand by their corresponding command:
+
+| File | Created When | Purpose |
+|------|--------------|---------|
+| `status.yaml` | Workspace creation (`work`) | Properties + logs + todos: records current task, progress, and next step. The **single stateful file** — fields written back deterministically by `work-status.sh`. |
+| `input.md` | Workspace creation (`work`) | Raw requirement text, reference links, requirement understanding, and suggested analysis chain. |
+| `spec.md` | `/tack spec` | Requirement planning (overall design): story splits, system/module breakdown, relationships and interactions, boundaries, acceptance criteria. |
+| `plan.md` | `/tack plan` | Development plan (detailed design + task list): option comparisons for complex tasks, module breakdown, task dependencies, and the task list that seeds `status.yaml`'s `tasks`. |
+| `tech-design.md` | `/tack tech-design` | Technical review document produced from the technical template. |
+| `test.md` | `/tack test` *(on demand)* | System test plan — actionable and executable; distinct from `testcode` unit tests, targeting complete system-function verification. |
+| `run/` | `/tack test` or `/tack run` *(on demand)* | Test/execution scripts plus `run.md` execution checklist. `run/local/` holds sensitive data (gitignored, never committed). |
+| `wiki/` | `work` / `ask` | Workspace-level code analysis documents (`<repo>-analysis.md`): repo overview, directory structure, module map, core flows, key technologies, external dependencies, and git history signals. |
+| `repo/<name>/` | `work` | Git worktree checked out to the requirement branch. The **only area where code changes are allowed**. |
+
+## The status.yaml Anatomy
+
+`status.yaml` is the single stateful file for a workspace. Every command reads it before starting and writes back its results via `work-status.sh`. Here is the full structure:
+
+```yaml
+# Top-level identity and metadata
+work_id: "user-login"
+work_dir: "20261001-user-login"
+status: "developing"          # Current workflow state
+workflow: "development"       # Active workflow
+branch: "user-login"          # Git branch (no date prefix)
+services: ["backend", "frontend"]
+mr_url: ""
+meego: ""
+tech_doc_url: ""
+
+created_at: "2026-10-01 09:00:00"
+updated_at: "2026-10-01 14:23:11"
+
+# Current progress snapshot
+current:
+  stage: "code"               # Active command: spec/plan/tech-design/code/fix/...
+  task: "T-03"                # Active task ID and title
+  next: "Implement JWT validation middleware"
+
+# Stage completion flags
+progress:
+  ask: false
+  spec: true
+  plan: true
+  tech-design: true
+  code: false
+  testcode: false             # on-demand: true only if explicitly triggered and completed
+  test: false                 # on-demand
+  run: false                  # on-demand
+  release_check: false        # on-demand
+  review: false
+  merged: false
+
+# Task list (generated by plan, advanced by code/testcode/fix)
+tasks:
+  - id: "T-01"
+    title: "Add session store interface"
+    module: "auth"
+    repo: "backend"
+    deps: []
+    acceptance: "SessionStore.Get/Set/Delete pass unit tests"
+    parallel_with: ["T-02"]
+    status: "done"
+  - id: "T-03"
+    title: "JWT validation middleware"
+    module: "auth"
+    repo: "backend"
+    deps: ["T-01"]
+    acceptance: "Middleware rejects expired and invalid tokens with 401"
+    parallel_with: []
+    status: "in_progress"
+
+# Follow-up items from merge review (don't block the merge)
+follow_ups: []
+
+# Deployment and swimlane tracking
+deploy: []
+
+# branch-op workflow data (null when not a branch-op task)
+branch_op: null
+
+# Defect origin tracing (null when not a bugfix task)
+bug_origin: null
+
+# Self-evolution raw material
+guidance: []
+```
+
+### Key Sections Explained
+
+<Accordion title="current — Live Progress Snapshot">
+  The `current` block is the AI's working memory for the active session. It records:
+  - **`stage`**: the command currently executing (`ask`, `spec`, `plan`, `tech-design`, `code`, `fix`, `testcode`, `test`, `run`, `review`, `merge`; in branch-op: `prepare`, `integrate`, `resolve`, `push`, `cleanup`; in bugfix: `reproduce`, `diagnose`, `fix`, `verify`)
+  - **`task`**: the task ID and title being worked on right now (references `tasks[]`)
+  - **`next`**: the precise next action — or the blocking reason and what is being waited for when `status: blocked`
+
+  `updated_at` is refreshed automatically by `work-status.sh` on every write.
+</Accordion>
+
+<Accordion title="tasks — Task List with Dependencies">
+  Generated by `/tack plan` and advanced by `code`, `testcode`, and `fix`. Each task carries:
+  - **`id`**: unique identifier within the workspace (e.g., `T-01`)
+  - **`module`** / **`repo`**: which module and which code repository
+  - **`deps`**: list of task IDs this task depends on (the scheduler enforces topological order)
+  - **`acceptance`**: requirement-level acceptance criteria (verbatim from `plan.md`)
+  - **`parallel_with`**: tasks that can run concurrently
+  - **`status`**: `pending` → `in_progress` → `done` | `blocked`
+</Accordion>
+
+<Accordion title="progress — Completion Flags">
+  Boolean flags for each major stage. Set to `true` after the corresponding command completes and the user confirms. The on-demand flags (`testcode`, `test`, `run`, `release_check`) are factual records — they are only `true` if the command was explicitly triggered and completed. Leaving them `false` does not block any subsequent step.
+</Accordion>
+
+<Accordion title="guidance — Self-Evolution Raw Material">
+  The `guidance` list is the raw material for Tack's self-evolution loop. Any time you guide, correct, or add agreements to the AI's approach during a task, a `raw` entry is automatically appended. No manual action is needed to collect guidance.
+
+  ```yaml
+  guidance:
+    - id: "G-01"
+      at: "2026-10-01T11:32:00Z"
+      stage: "code"
+      task: "T-03"
+      situation: "AI was about to add logging inside the JWT validation hot path"
+      guidance: "Never log inside high-frequency middleware paths; use sampling or async sink"
+      candidate: "Add to harness/rule/coding-standards.md under performance section"
+      status: "raw"
+      落点: ""
+  ```
+
+  At `/tack close`, all `raw` entries are reviewed and crystallized into `workflow`/`cmd`/`rule` entries (after user confirmation). Crystallized entries get `status: distilled` and a `落点` field recording the target file path. Landing points are verified by `check-guidance.sh` — if the target file no longer exists, `close` is blocked.
+</Accordion>
+
+<Accordion title="bug_origin — Defect Origin Tracing">
+  Populated only in the `bugfix` workflow, after `git-bug-trace.sh` runs during the `diagnosing` stage. Records the introducing commit, author, timestamp, requirement ticket, and the MR that merged the defect into the main branch. See the [Bugfix Workflow](/workflow/bugfix) page for the full field reference.
+</Accordion>
+
+<Accordion title="branch_op — Branch Operation Tracking">
+  Populated only in the `branch-op` workflow. Records the temporary branch names and push state for each repository involved. Used by the framework to resume a paused operation and to perform cleanup at `close`. See the [Branch Operations](/workflow/branch-operations) page for the full structure.
+</Accordion>
+
+## Git Dual Boundary
+
+Tack enforces a strict boundary between two Git repositories:
+
+<CardGroup cols={2}>
+  <Card title="Space-Root Repository (Framework-Managed)" icon="lock">
+    The repository at the project root — containing `AGENTS.md`, `harness/`, `wiki/`, and all workspace documents under `space/` — is committed and managed **automatically by the framework** at each command stage via `space.sh`. Users never run Git commands against this repository directly.
+  </Card>
+  <Card title="Code Repositories (User-Operated)" icon="code-branch">
+    Code repositories live at `space/<YYYYMMDD>-<branch>/repo/<name>/` as git worktrees. These are operated by the user via `/tack commit`, `/tack push`, `/tack merge`, and `/tack fetch`. No framework auto-commits happen here.
+  </Card>
+</CardGroup>
+
+This boundary is enforced by the `harness/rule/git-boundary.md` rule and observed by the `PreToolUse` Hook (when enabled). The `main repo/` at the project root is always read-only — never checked out for editing.
+
+## Wiki Files
+
+The `wiki/` directory at the project root holds shared knowledge that persists across workspaces. It starts empty and is populated on demand by `init`, `record`, and `close`. Entries always carry their source and contradictions preserve their evolution history — volatile code logic is never recorded here.
+
+| File | Purpose |
+|------|---------|
+| `wiki/manifest.md` | Service inventory: repo mapping, environment topology (BOE/PPE/PROD), deployment environment facts, swimlane configuration, middleware resources. The "what exists and where" document. |
+| `wiki/code-understanding.md` | Code navigation anchors: term → search term / code entry point, interface → business scenario. Stable anchors distilled from workspace `ask` analysis and reviewed by the user before landing here. |
+| `wiki/business-understanding.md` | Business background, core domain concepts, business rules, and process flows. Context that cannot be derived from reading the code alone. |
+| `wiki/decisions.md` | Technical decisions and engineering conventions: architectural choices, option comparisons and the reasons a particular option was selected, recurring patterns the team has agreed on. Sourced from `plan.md` decision records and distilled at `close`. |
+
+<Info>
+Wiki files are a three-level degradation chain for context loading. When knowledge is insufficient during `spec`, `plan`, or `code`: first consult `$root/wiki/` (cross-workspace consensus), then `$work/wiki/` (workspace-local analysis — check the baseline commit for freshness), then read the code directly. Never stop at "the wiki doesn't cover this" — always descend to the code as the final source of truth.
+</Info>

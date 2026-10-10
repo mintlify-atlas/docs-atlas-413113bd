@@ -1,0 +1,190 @@
+---
+title: "Evolution: Audit, Slim Down, and Evolve the Harness"
+sidebarTitle: "Evolution"
+description: "Audits all command files and AGENTS.md, proposes rule/reference/script candidates, fixes shell violations on the spot, crystallises raw guidance entries."
+---
+
+The `evolution` command is Tack Harness's inward self-review tool. Where `record` distils a specific piece of knowledge you name explicitly, `evolution` scans the entire harness systematically — every command file, every shell script, and `AGENTS.md` — to find what should be extracted, fixed, or cleaned up. The goal is a harness where each command contains only flow skeleton and references, with rules in `rule/`, heavy methodology in `reference/`, deterministic steps in `script/`, and no stale facts anywhere. Shell coding-standard violations are the only change made without confirmation; everything else is proposed first.
+
+## Command Signature
+
+```bash
+/tack evolution
+# Aliases:
+/tack evo            # short form
+/tack 进化           # Chinese trigger
+/tack evolve         # natural language
+/tack evolve harness # natural language
+```
+
+## Parameters
+
+This command takes no parameters.
+
+## Prerequisites
+
+- The project must be a Tack space (`$root/harness/cmd/` must exist).
+
+## What It Does
+
+<Steps>
+  <Step title="Structure Self-Check (Hard Gate)">
+    Executes:
+    ```bash
+    sh $root/harness/script/lint-harness.sh $root/harness
+    ```
+
+    **ERRORs** (missing front matter, name mismatch, missing required sections, route-token conflicts) must be fixed before the audit proceeds — these are structural damage, not candidates for discussion.
+
+    **WARNs** (missing `short`, orphaned `reference` files) are added to the candidate list for evaluation.
+
+    When the exit code is 0, proceeds immediately.
+  </Step>
+  <Step title="Version Check">
+    Runs `check-update.sh $root`. If a newer version exists, reproduces the notice verbatim and **recommends running `update` before evolving** — auditing on an old harness may produce changes that conflict with the new version. The user may override and continue.
+  </Step>
+  <Step title="Enumerate Commands and Collect Guidance">
+    Runs:
+    ```bash
+    sh $root/harness/script/scan-routes.sh commands $root/harness
+    ```
+    Reads every command file fresh (does not trust cached context). Also re-reads `$root/AGENTS.md` in full.
+
+    Collects `guidance[status=raw]` entries: current workspace `$work/status.yaml` first, then scans all `$root/space/*/status.yaml`. Entries appearing in multiple workspaces are flagged as high-priority signals.
+
+    Enumerates every `.sh` file in `$root/harness/script/` and reads each one fresh.
+  </Step>
+  <Step title="Audit Every File and Identify Candidates">
+    Each file is reviewed against five candidate types:
+
+    <Accordion title="Rule Candidates — Extract Repeated Logic">
+      **Criteria**: the same rule, criterion, format requirement, or boundary appears in multiple command files, or a single command embeds a large standalone rule block that could be reused elsewhere. Classic pattern: `record.md` → `rule/record-*.md`.
+
+      **Action if selected**: the extracted rule goes to `harness/rule/`; the source command retains a single reference line. Rule files are not part of the route table and are loaded only when referenced — they do not bloat the standing context.
+    </Accordion>
+
+    <Accordion title="Reference Candidates — Isolate Heavy Methodology">
+      **Criteria**: the command references a large, not-always-needed methodology or independent operations guide. Classic examples: `implement.md`, `tdd.md`, `grill-with-docs.md`.
+
+      **Action if selected**: extracted to `harness/reference/`; command retains a one-line "see reference: xxx.md" citation. Loaded only when the command explicitly references it.
+    </Accordion>
+
+    <Accordion title="Script Candidates — Harden Mechanical Steps">
+      **Criteria**: steps that are deterministic and mechanical — file/skeleton generation, string assembly, format and column-alignment checks, enum/ID validity checks, status field write-backs. These steps are error-prone when left to natural-language instruction.
+
+      **Action if selected**: implemented as POSIX `sh` with explicit input parameters, exit-code semantics, and a minimal usage example. Hard gate on non-zero exit. AI retains only semantic judgment and documentation authorship.
+    </Accordion>
+
+    <Accordion title="Structure Candidates — Reorganise Without Changing Meaning">
+      **Criteria**: per `harness/rule/doc-structure.md` — variable definitions appear after first use, related items are scattered by unrelated content, sequenced items are not in time order, or renumbering reveals dangling "step N" references.
+
+      **Action if selected**: sections/items are reordered only; no semantic changes. After landing, a `grep` pass verifies no dangling numbered references remain. Low default priority unless dangling references are found (then elevated to high).
+    </Accordion>
+
+    <Accordion title="Cleanup Candidates — Remove Stale Facts and Inverse Descriptions">
+      **Criteria**: per AGENTS.md core constraint 13 — descriptions of commands, workflows, fields, scripts, or flows that no longer exist. Once a capability is removed, its description loses its factual basis and must be **deleted wholesale**, not negated or patched.
+
+      **Action if selected**: before deletion, a full-repo `grep` builds a reference graph to confirm no real consumers remain. After deletion, verified for no dangling cross-references. When uncertain, downgraded to a candidate for user confirmation rather than auto-deleted.
+    </Accordion>
+
+    Additionally, **`AGENTS.md`** is audited for: core-constraint bloat (details that should move to `rule/`), structural ordering and dangling numbered references, and the boundary of its two protected blocks (project-info and distilled-conventions — `evolution` reads but never directly edits these).
+
+    **Shell Script Coding Standards (immediate fix, no confirmation required)**:
+
+    Every `.sh` file is checked against `harness/rule/coding-standards-shell.md` and the POSIX cross-platform baseline:
+    - Variable references: named variables use `"${VAR}"` double-quotes with braces
+    - No `sed -i` (GNU/BSD incompatibility) — in-place edits use write-to-temp + `mv`
+    - No bashisms: only `set -eu`, `[ ]`, `case`, no bash arrays, no `[[`, no process substitution
+    - `sh -n` syntax check passes
+    - Paths use forward slashes; no platform-specific tool options
+    
+    Violations are corrected **immediately, in place**, preserving behaviour, parameters, and exit-code semantics exactly. All violations in the same file are fixed in one pass. Each fixed script is re-checked with `sh -n`. If a fix involves a behaviour or logic choice (not purely mechanical), it is downgraded to a script candidate for user confirmation.
+  </Step>
+  <Step title="Output Candidate Tables">
+    Produces two tables:
+
+    **Group A — Command Audit Candidates**
+
+    | Source file | Type | Suggested landing / script name | Summary | Reason | Priority |
+    |---|---|---|---|---|---|
+    | `harness/cmd/dev/spec.md` | rule | `harness/rule/spec-criteria.md` | Clarification judgment criteria | Repeated in 3 commands | High |
+
+    **Group B — Guidance Candidates**
+
+    | Source workspace / entry ID | Scenario & guidance | Suggested landing | Merge or create | Reason | Count / Priority |
+    |---|---|---|---|---|---|
+    | `space/20261001-user-login` / g-3 | "Always run lint before push" | `harness/rule/dev-gates.md` | Merge | Appeared in 4 workspaces | High |
+
+    Shell immediate-fix items are listed separately: `Script | Fix applied | sh -n result`.
+
+    Each candidate is annotated with dependency relationships: "no dependencies (parallelisable)" or "depends on candidate X (must land first)". Typical dependency: script candidates require their referenced rule/reference files to land first.
+  </Step>
+  <Step title="User Confirms, Then Execute">
+    You pick which candidates to act on. Unselected candidates are not changed.
+
+    **Execution order**: dependency-free candidates are landed in parallel (multiple file writes in one batch); dependent candidates run after their prerequisites.
+
+    - **rule / reference**: scanned for existing entries first, merged when possible, new files created only when no match exists (via `record` flow)
+    - **workflow / cmd / AGENTS.md** (guidance group): minimal edits to the target file — only the guided flow/criterion is incorporated, unrelated paragraphs untouched; new commands/workflows go through `record` flow
+    - **script**: before implementation, explains the new file, its necessity, and why AI direct execution is unreliable; user confirms; script style matches `harness/script/` conventions
+    - **Synchronise source**: corresponding sections in the original `cmd` file are replaced with a reference line after the rule/reference/script is created
+
+    Guidance write-back for each completed B-group candidate:
+    ```bash
+    sh $root/harness/script/work-status.sh <workspace>/status.yaml \
+      guidance <id> distilled <landing-path...>
+    ```
+    Dismissed entries:
+    ```bash
+    sh $root/harness/script/work-status.sh <workspace>/status.yaml \
+      guidance <id> dismissed
+    ```
+  </Step>
+  <Step title="Verification">
+    Runs the full verification suite after all selected candidates are landed:
+
+    ```bash
+    sh $root/harness/script/lint-harness.sh $root/harness   # must exit 0
+    sh $root/harness/script/scan-routes.sh list $root/harness  # all commands present
+    sh $root/harness/script/check-guidance.sh $root            # no BROKEN entries
+    ```
+
+    New scripts are run with a minimal use case to verify exit-code semantics. All changes require human review before the auto-commit fires.
+  </Step>
+</Steps>
+
+## Auto-Commit
+
+```bash
+sh $root/harness/script/space.sh commit $root "chore(tack): harness evolution"
+```
+
+Runs after any file is changed — including shell script immediate-fixes even if no candidates were selected. No-op when nothing changed.
+
+## Post-Completion Checklist
+
+```
+- [ ] lint-harness self-check ran; ERRORs fixed before audit; WARNs evaluated
+- [ ] Every cmd file audited; every file has a candidate or explicit "none" conclusion
+- [ ] AGENTS.md audited (standing-context leanness, section/numbering structure, rule overlap); protected blocks untouched
+- [ ] All workspace status.yaml raw guidance entries evaluated; B-group candidates or exclusions cover all entries
+- [ ] Candidate table contains type, landing point, summary, reason, and priority; no files changed before confirmation
+- [ ] Landed rule/reference entries merged with existing files where possible; scripts have explicit params, exit-code semantics, and passing minimal use case
+- [ ] structure candidates reordered only — no semantic changes; doc-structure.md dangling-reference check passed
+- [ ] Stale facts and inverse descriptions identified; cleanup candidates confirmed as having no real consumers before deletion
+- [ ] Every .sh file checked against coding-standards-shell.md and POSIX baseline; violations fixed immediately (behaviour preserved); sh -n passes; fixes reported per script
+- [ ] Distilled cmd files retain only flow skeleton and correct references
+- [ ] Completed guidance entries written back as distilled (with landing path) or dismissed; unselected remain raw
+- [ ] Closing lint-harness exits 0; scan-routes route table is complete; check-guidance has no BROKEN entries; all changes human-reviewed
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Review the Updated Route Table" icon="list" href="/commands/help">
+    Run `help` to see newly crystallised scripts and commands in the live route table.
+  </Card>
+  <Card title="Learn from External Skills" icon="graduation-cap" href="/commands/study">
+    Run `study` to bring in ideas from another skill or repository, then let the auto-triggered `evolution` pass audit the additions.
+  </Card>
+</CardGroup>

@@ -1,0 +1,142 @@
+---
+title: "Testing Workflow: Unit Tests, System Tests, and Scripts"
+sidebarTitle: "Testing"
+description: "Tack's testing workflow covers unit test review, system testing, and script execution as on-demand commands that don't block the main development chain — trigger them only when testing is the explicit goal."
+---
+
+Testing in Tack is treated as on-demand — triggered explicitly by the user, never blocking the main development chain. The three testing commands (`testcode`, `test`, `run`) are available inside any development workflow run, but they also form their own independent `testing` workflow when testing itself is the primary goal of the task. This page covers both cases: how the testing workflow runs as a standalone state machine and how the three commands behave individually.
+
+## Trigger Words
+
+The testing workflow activates when Tack detects any of these intents:
+
+- `testing workflow`, `add tests`, `testing task`, `/tst`
+- Chinese: `测试工作流`, `补测试`, `测试任务`
+
+**Boundary**: Use `development` to write feature code. Use `bugfix` to locate and fix a defect. The `testing` workflow is for when testing itself is the primary task — adding coverage, running system verification, or post-fix regression.
+
+## State Transitions
+
+```
+initialized → test-planning → testing → verifying → completed
+                       \          \          \
+                        └──────── blocked (test environment unavailable / unclear requirements)
+```
+
+| State | Meaning | Entry Condition |
+|-------|---------|-----------------|
+| `initialized` | Test scope and subject confirmed | Task ID specified / workspace and scope confirmed |
+| `test-planning` | Test plan being drafted | Reading `status.yaml` tasks, code diff, and test-plan |
+| `testing` | Writing and running tests in a loop | `testcode` execution begins |
+| `verifying` | Coverage threshold met; running regression | New/modified code coverage ≥ 90% |
+| `completed` | Testing delivered | User reviews test quality and confirms |
+| `blocked` | Stalled | No test framework / environment unavailable / unclear requirements |
+
+## The Three Testing Commands
+
+Tack provides three distinct testing commands, each targeting a different level of verification:
+
+<Tabs>
+  <Tab title="testcode — Unit Tests">
+    **Purpose**: Unit-test-driven requirement-code consistency review and defect discovery. The goal is not coverage for its own sake — it is to check the implementation against `spec.md`/`plan.md` acceptance criteria and uncover missing boundaries.
+
+    **Trigger**: `unit test`, `unit testing`, `/testcode`, or `tc`
+
+    **What it does**:
+    - Reads `spec.md` and `plan.md` acceptance criteria line-by-line
+    - Identifies unimplemented requirements, implementation deviations, and untested edge cases
+    - Designs test cases that are intended to *expose problems* — assertions are written against requirement expectations, not current code behavior
+    - Runs the tests; failing cases confirm defects; the fix goes to the **code**, not the test
+    - Repeats the review → failing-case design → run → fix-code → regress loop until new/modified code coverage ≥ 90%
+
+    **Output**: Test code in `$work/repo/`, review findings, defect fix records, coverage report
+
+    **Progress flag**: `progress.testcode: true`
+
+    **Exit criterion**: Coverage of new/modified code ≥ 90% **and** no invalid assertions written just to reach the threshold. Untestable code requires an explanation to the user.
+
+    <Warning>
+    When test cases fail, always fix the code — never adjust the test to match incorrect behavior. Tests are a specification tool, not a rubber stamp.
+    </Warning>
+  </Tab>
+  <Tab title="test — System Test Plan">
+    **Purpose**: End-to-end system-function verification. Produces an actionable, executable test plan in `$work/test.md` that targets the complete system rather than individual units.
+
+    **Trigger**: `system test`, `integration test`, `end-to-end test`, `/test`, or `t`
+
+    **What it does**:
+    - Turns test descriptions into a structured, actionable plan in `$work/test.md`
+    - Identifies test scenarios, prerequisites, execution steps, and expected outcomes
+    - When scripts are needed, initializes `run/` (creating `run/run.md` and `run/local/`)
+    - Sensitive data (keys, tokens, accounts) always goes in `run/local/` — gitignored, never committed
+
+    **Output**: `$work/test.md` (executable system test plan); optionally `run/` scripts
+
+    **Progress flag**: `progress.test: true`
+
+    **Distinction from `testcode`**: `testcode` targets new/modified code coverage at the unit level; `test` targets complete system-function verification from an end-to-end perspective.
+  </Tab>
+  <Tab title="run — Execute Scripts">
+    **Purpose**: Execute test scripts, data scripts, or migration scripts from the `run/` directory.
+
+    **Trigger**: `execute`, `run script`, `/run`, or `rn`
+
+    **What it does**:
+    - When `run/` does not exist: initializes it with `run/run.md` (execution checklist) and `run/local/` (gitignored)
+    - When `run/run.md` exists: executes each item on the checklist in order
+    - Sensitive data (API keys, DB credentials, account tokens) always lands in `run/local/` — this directory is gitignored and never committed
+    - Scripts are never hardcoded with credentials; they reference `run/local/` for secret values
+
+    **Output**: Execution results logged against the `run/run.md` checklist
+
+    **Progress flag**: `progress.run: true`
+
+    **Credentials rule**: Never hardcode sensitive values in scripts. Store them in `run/local/` (gitignored) and reference them by path or environment variable. See `harness/rule/security.md` for the credential placement policy — committed documents record only the source reference, never the value itself.
+  </Tab>
+</Tabs>
+
+## When to Use Each Command
+
+| Command | Use When | Output Location |
+|---------|----------|-----------------|
+| `testcode` | You want to verify the implementation matches `spec`/`plan` acceptance criteria, or find missed edge cases in new code | `$work/repo/` (test code in the worktree) |
+| `test` | You want a complete end-to-end scenario coverage plan for the system function | `$work/test.md`; optionally `$work/run/` |
+| `run` | You have scripts to execute — data setup, migration, or test automation steps | `$work/run/run.md` execution log |
+
+<Warning>
+`testcode`, `test`, and `run` are **not mandatory**. After `/tack code` completes, you can run `/tack commit` and `/tack merge` directly without triggering any of these commands — no "skipped" marker is needed. The AI never proactively asks "shall we test?" after `code` finishes. Trigger these commands only when you explicitly need them, or use the `testing` workflow when testing is the primary goal of the session.
+</Warning>
+
+## Testing Workflow Stage Mapping
+
+When testing is the primary goal, the `testing` workflow runs its own state machine:
+
+| # | Stage | Command | Output | Status / Progress After |
+|---|-------|---------|--------|------------------------|
+| 1 | Confirm scope and plan | *(collaborative planning)* | Test scope, case inventory | `test-planning` |
+| 2 | Consistency review + unit tests | `testcode` | Review findings, test code, defect fixes | `testing` |
+| 3 | Loop: expose problems, fix code | `testcode` | Coverage results (before/after), defect fix log | `testing → verifying` |
+| 4 | System test plan | `test` | `$work/test.md` (executable plan); optional `run/` init | `progress.test` |
+| 5 | Execute scripts | `run` | Loaded from `run/run.md`, results logged | `progress.run` |
+| 6 | Regression verification | build/full test commands | All tests pass, no stability issues | `verifying` |
+| 7 | Commit | `commit` `push` | Test commits | `completed` |
+
+<Note>
+When you enter the `testing` workflow from inside the `development` workflow (e.g., you run `/tack testcode` mid-development), the `status` in `status.yaml` temporarily moves to `testing` for that command, then returns to the development workflow's state when done. Testing commands do not act as a gate — they never block commit or merge regardless of their completion state.
+</Note>
+
+## Credentials and Sensitive Data
+
+Any test or data script that requires credentials must follow this layout:
+
+```
+space/20261001-user-login/
+└── run/
+    ├── run.md          # Execution checklist (committed)
+    ├── setup.sh        # Script referencing ./local/ for secrets (committed)
+    └── local/          # ← gitignored, never committed
+        ├── db.env      # DB credentials
+        └── api-key.txt # API tokens
+```
+
+Scripts reference sensitive values by reading from `run/local/` at runtime — never hardcoded inline. The `run/local/` directory is enforced as gitignored; `scan-secrets.sh` will block any auto-commit that attempts to include plaintext credentials.

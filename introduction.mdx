@@ -1,0 +1,86 @@
+---
+title: "Tack Harness: AI-Assisted R&D Workflow Framework"
+sidebarTitle: "Introduction"
+description: "Discover what Tack Harness is, why it exists, who benefits from it, and the five design principles that keep it minimal, configurable, and safe."
+---
+
+Tack Harness is a programming workflow framework purpose-built for software R&D that works as a _skill_ installed into AI coding agents such as TRAE, Cursor, Windsurf, and Claude Code. Unlike tools that hard-code process logic inside the agent itself, Tack Harness externalises every command, workflow, and rule into plain Markdown files that live alongside your project — making the entire development process visible, editable, and upgradeable without ever touching the underlying skill.
+
+The framework organises work along two axes simultaneously: the time dimension follows the software engineering lifecycle (requirement → design → code → test → merge → close), while the space dimension arranges the directory structure around real development habits — one isolated workspace per requirement, shared wiki knowledge at the project root, and read-only main repositories that can never be accidentally mutated.
+
+## The Problem It Solves
+
+Most AI coding tools embed the development process as opaque, fixed logic. When the process is wrong or missing a step, there is nowhere to look and nothing to change. Tack Harness takes the opposite approach: the skill is a minimal container, and every capability is injected at runtime by scanning Markdown files with structured frontmatter. You can add a command by creating a single file, fix a workflow by editing plain text, and share the result by committing to your project repository — all without waiting for a tool update.
+
+## Five Design Principles
+
+| Principle | Description |
+|---|---|
+| **Fixable process** | Anything a script can do never relies on the LLM; fixed-flow scripts guarantee stability and keep token costs under control |
+| **Extensible capabilities** | Adding one Markdown file registers one new capability — no changes to the skill itself |
+| **Traceable state** | The workspace's `status.yaml` is the single stateful file, so the AI always knows the current progress and the next action |
+| **Isolated changes** | Worktrees isolate code changes per requirement; the main repository always stays a read-only baseline |
+| **Distilled experience** | Every completed task automatically crystallizes practical experience into commands, workflows, rules, or wiki entries |
+
+## Key Features
+
+<Accordion title="Dependency injection">
+  The skill is the container and capabilities are injections: the skill itself is minimal and contains no command implementations. Commands, workflows, and delegatable roles are all Markdown files inside the project — the frontmatter (`command` / `short` / `triggers` / `summary`) is the injection declaration, and `scan-routes.sh` dynamically scans and assembles them into a route table at runtime. Adding one file injects one new capability: zero skill changes, and upgrades never overwrite custom content.
+</Accordion>
+
+<Accordion title="Workflow state machine">
+  Development, testing, bugfix, conflict merge, and branch operations each have an independent workflow defining state transitions and orchestrating commands. The state in the workspace `status.yaml` is defined by workflows, so the AI always knows the current stage and the next step.
+</Accordion>
+
+<Accordion title="Defect origin tracing">
+  The bugfix workflow ships with `git-bug-trace`: once the defective code line is located, one command traces the introducing commit, time, author, the related requirement/ticket ID, and the MR link that merged it into the main branch (GitHub/GitLab/Bitbucket). Results land in the `bug_origin` block of `status.yaml`, letting you distinguish requirement-introduced defects from legacy ones.
+</Accordion>
+
+<Accordion title="Review & release gates">
+  `code-review` reviews changes function by function — using the plan/tech-design as the spec and the three-dot diff against the target branch as facts — checking correctness and hazards and assessing affected interfaces and scenarios. `release-check` produces a go-live checklist covering database migration statements, config change templates, API permission requests, and middleware resource requests.
+</Accordion>
+
+<Accordion title="Self-authoring commands">
+  `record` is "the command that generates commands". It first scans existing commands and tries to merge fixes; if none fits, you only need to supply `command` and the rest — short form, Chinese/English triggers, and the command body — is generated automatically.
+</Accordion>
+
+<Accordion title="Self-evolution">
+  The guidance closed loop: at every stage of a task, user guidance, corrections, and supplementary agreements are automatically appended as raw facts to the `guidance` list in `status.yaml`. At `close` they are automatically reviewed and crystallized into workflow/cmd/rule entries (distilled), with landing points verified by `check-guidance`, forming a "collect → crystallize → verify" self-evolution loop.
+</Accordion>
+
+<Accordion title="Role delegation">
+  `harness/agents/` ships delegatable roles (`code-explorer` / `code-architect` / `code-reviewer`), referenced by commands such as `ask`, `plan`, `tech-design`, `code-review`, and `merge`. They execute in parallel via Task subagents in isolated contexts — they exist for discovery and delegation only and never participate in command routing.
+</Accordion>
+
+<Accordion title="Hook acceleration layer">
+  `harness/script/hook/` provides optional IDE Hook acceleration (SessionStart preloads routes, UserPromptSubmit enables zero-roundtrip route resolution, PreToolUse provides boundary observation). It only moves deterministic facts — `AGENTS.md` and `scan-routes.sh` remain the single source of truth. Disabled by default; it never intercepts.
+</Accordion>
+
+<Accordion title="Learning from outside">
+  `study` treats external skills or repositories as teaching material: it reads through the structure, distils borrowable ideas, and lands them at the corresponding harness locations by adding, merging, or optimizing. The sole confirmation point is a unified preview — after confirmation it auto-commits and triggers one `evolution` for inward self-review.
+</Accordion>
+
+<Accordion title="Minimal & restrained / Simple & easy to use">
+  Keeps the smallest viable directory structure, basic commands, and necessary state transitions. All commands support Chinese and English triggers plus short forms (e.g., "requirement planning" / `spec` / `sp`). Anything scriptable never relies on the LLM.
+</Accordion>
+
+<Accordion title="Open configuration / Safe & controllable">
+  All commands, workflows, and rules live under the project's `harness/` directory — freely add or modify them, and upgrades never overwrite custom content. Worktree-isolated changes, command entry/exit gates, human review checkpoints, and destructive Git operations are forbidden by design.
+</Accordion>
+
+## Where to Go Next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Walk through a complete R&D chain from installation to closing a workspace using a concrete example.
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="/concepts">
+    Understand command routing, workflow state machines, the workspace model, and the Git dual boundary.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation/overview">
+    Choose an install method — agent-assisted, one-line script, clone, or archive download.
+  </Card>
+  <Card title="Development Workflow" icon="code-branch" href="/workflow/development">
+    Deep-dive into the primary development workflow and its state transitions.
+  </Card>
+</CardGroup>

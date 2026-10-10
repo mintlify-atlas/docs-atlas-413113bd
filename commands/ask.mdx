@@ -1,0 +1,152 @@
+---
+title: "Ask: Code Analysis and Q&A for Any Worktree"
+sidebarTitle: "Ask"
+description: "Analyze a full repository's structure and responsibilities, or answer targeted code-logic questions. Findings are saved to the workspace wiki and never modify source code."
+---
+
+The `ask` command is Tack Harness's read-only reconnaissance tool. It operates in two distinct modes — **whole-repo analysis** and **targeted code Q&A** — and always treats the codebase as the sole source of truth, citing file paths and line numbers for every conclusion. Because `ask` never modifies code and can run at any workflow stage, it is the natural first step before `spec` or `plan` when you are entering an unfamiliar codebase.
+
+## Command Signature
+
+```bash
+/tack ask [question or repo-name]
+# Aliases:
+/tack a           # short form
+```
+
+**Triggers:** `问`, `提问`, `代码问答`, `分析代码`, `代码分析`, `ask`, `question`, `code qa`, `analyze code`, `code analysis`
+
+## Two Modes
+
+<CardGroup cols={2}>
+  <Card title="Mode 1: Whole-Repo Analysis" icon="telescope">
+    No specific question is provided, or the user asks for an overview of a repository or code structure. Produces a structured `<repo>-analysis.md` document in `$work/wiki/`.
+  </Card>
+  <Card title="Mode 2: Code Q&A" icon="message-question">
+    User asks a specific question about code logic. The AI locates relevant code first, answers with file:line evidence, and appends the answer to a themed document in `$work/wiki/`.
+  </Card>
+</CardGroup>
+
+## Mode 1: Whole-Repo Analysis
+
+<Steps>
+  <Step title="Write Stage Status">
+    Sets `stage ask` and `task 代码分析` in `status.yaml`. Does **not** advance the workflow state machine — `ask` runs at any stage.
+  </Step>
+  <Step title="Freshness Check">
+    For each target repository (specified by name, or all repos under `$work/repo/` when unspecified), `ask` records the current `HEAD` commit via `git rev-parse --short HEAD` and checks whether `$work/wiki/<repo>-analysis.md` already exists.
+
+    - **Exists, HEAD matches** — prompts whether to reuse or re-analyze.
+    - **Exists, HEAD has drifted** — warns that the existing document is based on `<old-commit>`, reports how many commits have passed (`git rev-list --count`), and asks whether to do an incremental update or full re-analysis.
+    - **Does not exist** — proceeds directly to analysis.
+  </Step>
+  <Step title="Analyze and Generate the Document">
+    `ask` reads directory structure, entry files, key modules, config files, and recent git history (`git log --oneline -50`) — **commit messages only; diffs are never read unless the user requests deeper investigation on a specific commit**.
+
+    For large repositories, `ask` can delegate 2–3 parallel `code-explorer` sub-agents across independent dimensions (entry points & call chains / data models & data flow / architecture patterns & external deps). Small repos are analyzed directly.
+
+    The resulting `$work/wiki/<repo>-analysis.md` always starts with a baseline header:
+
+    ```markdown
+    > 基准 commit: <short-hash>（<date>）  Generated: <date>  Repo: <repo-name>
+    ```
+
+    The document covers eight sections (omit sections with no content):
+
+    | # | Section |
+    |---|---------|
+    | 1 | **Repo overview** — language, framework, build tool, entry file |
+    | 2 | **Directory structure** — top-level tree + per-directory responsibilities |
+    | 3 | **Module breakdown** — module, responsibility, key classes/files |
+    | 4 | **Core flows** — call chains from entry to persistence / response |
+    | 5 | **Key technical points** — design patterns, middleware, config mechanisms |
+    | 6 | **External dependencies** — services, middleware, third-party libraries with versions |
+    | 7 | **Git history clues** — decision/convention clues from commit messages (attached commit hash, marked "pending confirmation") |
+    | 8 | **Open questions** — ambiguities discovered during analysis |
+  </Step>
+  <Step title="Register Index and Propose Anchors">
+    Every generated document is registered in `$root/wiki/code-understanding.md` (creating the file from `wiki-code-understanding.md` template if absent). Two candidate lists are surfaced to the user for review:
+
+    - **Stable navigation anchors** — low-churn facts such as business term ↔ code entry, interface ↔ business scenario. Confirmed entries are distilled via `record` into the root wiki's mapping tables.
+    - **Decision/convention candidates** — project decisions that are visible only in commit messages. Confirmed entries go to `$root/wiki/decisions.md`. Unconfirmable clues stay in the document's "Git history clues" section, marked "pending confirmation".
+  </Step>
+  <Step title="Write Completion Status">
+    Executes `work-status.sh set progress.ask true` and suggests next steps such as `spec` or `plan`.
+  </Step>
+</Steps>
+
+## Mode 2: Code Q&A
+
+<Steps>
+  <Step title="Receive and Focus the Question">
+    If the question is too broad (e.g., "explain this project"), `ask` prompts the user to narrow it to a specific logic point — or switches to Mode 1. Once focused, `ask` uses `grep`/glob to locate the relevant files and line numbers **before** reading any code.
+  </Step>
+  <Step title="Locate or Create a Theme Document">
+    Scans `$work/wiki/*.md` headers to find an existing document on the same topic. If one matches, the new Q&A is appended to it. If not, a new document is created with a kebab-case filename (e.g., `order-timeout-flow.md`) and this initial structure:
+
+    ```markdown
+    # <Chinese Topic>
+
+    > Topic: <keyword>
+    > Repos: <repo1, repo2>
+    > Baseline commit: <short-hash>
+    > Last updated: <date>
+
+    ## Distilled Conclusions
+
+    (Continuously merged and updated as Q&A progresses)
+
+    ## Q&A Log
+    ```
+  </Step>
+  <Step title="Read Code and Answer">
+    Traces the call chain, forms conclusions, and responds immediately. Every key conclusion carries a `file:line` reference. Parts that cannot be verified from the code are explicitly marked "pending confirmation" — never guessed.
+  </Step>
+  <Step title="Append and Merge into Theme Document">
+    Appends a new entry under "Q&A Log":
+
+    ```markdown
+    ### Q<n>: <question> (<date>)
+    <answer with file:line evidence>
+    ```
+
+    The "Distilled Conclusions" section is **merged** — duplicates are consolidated, contradictions are updated in-place rather than stacked. The document's baseline commit and last-updated date are refreshed.
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/wiki/<repo>-analysis.md" icon="file-lines">
+    Whole-repo analysis document. Contains baseline commit header and eight structured sections. Only exists in the workspace wiki — never promoted to the root wiki directly.
+  </Card>
+  <Card title="$work/wiki/<topic>.md" icon="comments">
+    Q&A theme document. Accumulates conclusions across multiple questions on the same topic. Registered in the root wiki index.
+  </Card>
+  <Card title="$root/wiki/code-understanding.md" icon="book">
+    Root wiki index. Receives stable navigation anchors and the analysis document registry. Updated after human review.
+  </Card>
+  <Card title="$root/wiki/decisions.md" icon="gavel">
+    Root wiki decisions log. Receives confirmed project decisions extracted from git history clues. Updated after human review.
+  </Card>
+</CardGroup>
+
+## Key Constraints
+
+<Note>
+  `ask` is read-only. It never modifies source code or repository files. All conclusions must be backed by a file path with a line number or a commit hash — no guessing.
+</Note>
+
+<Tip>
+  Run `ask` before `spec` or `plan` when you are entering an unfamiliar codebase. The analysis document and stable anchors it produces are loaded as context by subsequent planning commands.
+</Tip>
+
+<Warning>
+  Analysis documents are bound to the current branch and commit. They are **temporary snapshots** — volatile call chains and module internals belong only in `$work/wiki/`, never in the root wiki. Only stable, low-churn navigation anchors and confirmed decisions are promoted to the root wiki after human review.
+</Warning>
+
+## Next Steps
+
+- Continue asking follow-up questions on the same topic — conclusions are continuously merged into the same document.
+- Run `spec` or `plan` and reference `$work/wiki/` products as code-side context.
+- Clarify open questions with team members, then write the answers back into the wiki document.

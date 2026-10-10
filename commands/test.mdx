@@ -1,0 +1,102 @@
+---
+title: "Test: System Test Plan from Requirements to Executable Cases"
+sidebarTitle: "Test"
+description: "On-demand system testing that turns a test description into a structured, executable test.md plan. When scripts are needed, they go to run/. Distinct from testcode's unit test coverage goal."
+---
+
+The `test` command turns your description of what you want to test into a structured, fully actionable system test plan saved as `$work/test.md`. It targets **whole-system functional verification** — end-to-end behaviors, integration scenarios, and acceptance criteria at the feature level — rather than unit test coverage. When the plan calls for automation scripts, `test` initializes `$work/run/` (if it doesn't exist) and places the scripts there. Like all testing commands in Tack Harness, `test` is on-demand and never blocks your ability to commit or merge.
+
+<Warning>
+  **`test` is on-demand only.** After `code` completes, you can commit and merge directly without running system tests. The AI will not suggest "should we do system testing?" Trigger this command only when you actively want a structured system test plan.
+</Warning>
+
+## Command Signature
+
+```bash
+/tack test [test description]
+# Aliases:
+/tack t           # short form
+```
+
+**Triggers:** `测试`, `系统测试`, `集成测试`, `端到端测试`, `e2e`, `test`, `system test`, `integration test`, `end-to-end test`
+
+## When to Use `test` vs `testcode`
+
+| | `test` | `testcode` |
+|---|---|---|
+| **Target** | Whole-system / feature-level behavior | Unit / code coverage |
+| **Artifact** | `$work/test.md` plan + optional scripts in `run/` | Test files added to `$work/repo/` |
+| **Goal** | Verify the system does what users expect end-to-end | Find implementation gaps vs spec/plan acceptance criteria |
+| **Mandated?** | No — on demand | No — on demand |
+
+## Prerequisites
+
+- The system under test must have an implementation in `$work/repo/` or a deployable environment.
+- **Not applicable** for unit test coverage goals — use `testcode` for that.
+
+## What It Does
+
+<Steps>
+  <Step title="Receive and Clarify the Test Description">
+    Accepts your description of what to test: which features, on what environment, and what outcomes to verify. If the description is vague, `test` asks clarifying questions to pin down:
+
+    - Which specific features are in scope
+    - Which features are explicitly out of scope
+    - What environment the tests will run against
+
+    Only after the scope is clear does `test` proceed to plan generation.
+  </Step>
+  <Step title="Load Context">
+    Loads context from:
+
+    - `$work/spec.md` — acceptance criteria (grepped to relevant sections)
+    - `$work/plan.md` — module map and interfaces
+    - `$work/wiki/` and `$root/wiki/` — environment facts, matched by keyword search only
+    - Code facts — targeted to the interfaces and entry points in scope
+
+    Environment topology and deployment details come from `$root/wiki/manifest.md`'s "deployment environments and swim lanes" section. If that section doesn't exist, the missing information is flagged — never guessed.
+  </Step>
+  <Step title="Generate test.md">
+    Copies `harness/template/test.md` to `$work/test.md` and fills it with the structured test plan:
+
+    | Section | Content |
+    |---------|---------|
+    | **Test Objectives & Scope** | What is and is not being tested; acceptance criteria as a checkable list |
+    | **Test Environment** | Addresses, entry points; credential sources point to `run/local/` — never plaintext |
+    | **Test Cases** | Scenario / preconditions / steps / expected result / status |
+    | **Test Data Preparation** | How to set up the necessary data state |
+    | **Execution Method** | Manual steps and automation scripts |
+
+    <Note>
+      Credentials and sensitive values are never written into `test.md`. They are referenced as "credentials from `run/local/<file>`" and must be placed there by the user.
+    </Note>
+  </Step>
+  <Step title="Initialize run/ When Scripts Are Needed">
+    If the test plan calls for automation scripts, `test` checks whether `$work/run/` exists. If not, it runs the `run` command's initialization flow to create `run.md` + `local/`, then returns to finish the test plan. Scripts are placed under `$work/run/`.
+  </Step>
+  <Step title="Write Stage Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set stage test next "按 test.md 执行系统测试"
+    ```
+    After `test.md` is confirmed: adds `progress.test true`.
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/test.md" icon="clipboard-list">
+    The structured, executable system test plan. Contains objectives, scope, per-case steps and expected outcomes, and a checkable acceptance criteria list.
+  </Card>
+  <Card title="$work/run/ (when needed)" icon="folder-open">
+    Initialized with `run.md` and `local/`. Test automation scripts are placed here. Sensitive data goes in `local/` — gitignored and never committed.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+- Execute the test cases in `test.md`. When scripts are needed, run `run` to execute them.
+- If defects are found, use `fix` to correct the implementation.
+- Testing does not block the main workflow — you can run `commit` and `merge` at any time.

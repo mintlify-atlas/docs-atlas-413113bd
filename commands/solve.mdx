@@ -1,0 +1,79 @@
+---
+title: "Solve: Guided File-by-File Conflict Resolution"
+sidebarTitle: "Solve"
+description: "Walk through every conflicting file sequentially, see both sides with context and an explanation, then decide the resolution — Tack never picks a side silently."
+---
+
+Tack's `solve` command provides a structured, interactive path through merge and rebase conflicts. It locates every conflicting file across all workspace repositories, presents both sides of each conflict with surrounding context and an explanation of why the conflict occurred, and then applies exactly the resolution you choose. `solve` is invoked automatically when [`merge`](/commands/merge) detects a conflict, and can also be triggered directly whenever you have unmerged paths in your working tree.
+
+## Command Signature
+
+```text
+/tack solve
+/tack s
+```
+
+**Triggers:** `conflict`, `resolve conflict`, `solve`  
+**Short form:** `s`  
+**Parameters:** none
+
+## What It Does
+
+<Steps>
+  <Step title="Locate all conflicts">
+    Runs `git status` and `git diff --name-only --diff-filter=U` across every repository under `space/<YYYYMMDD>-<branch>/repo/<repo-name>/`. The output is a complete list of conflicting files grouped by repository, with the conflict type noted for each (`modify/modify`, `modify/delete`, etc.).
+  </Step>
+  <Step title="Analyse and resolve each file">
+    For each conflicting file, in sequence:
+    1. **Show both sides** — the full diff for the conflicting hunks, including surrounding context lines.
+    2. **Explain the conflict** — what each side was trying to achieve, based on code intent.
+    3. **Suggest a resolution** — a recommended merge outcome with reasoning.
+    4. **Apply your decision** — edits the file according to your explicit instruction and removes all conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
+
+    For `modify/delete` conflicts, you explicitly choose whether to keep or delete the file.
+  </Step>
+  <Step title="Validate the resolution">
+    Stages each resolved file with `git add`. After all files in a repository are resolved, runs the build and any relevant tests to confirm the resolution has not introduced new issues.
+  </Step>
+  <Step title="Resume the interrupted operation">
+    - **Merge conflict:** runs `git merge --continue` (or `git merge --abort` if you decide to cancel).
+    - **Rebase conflict:** runs `git rebase --continue` (or `git rebase --abort` if you decide to cancel).
+
+    Force operations that bypass the conflict state are never used.
+  </Step>
+</Steps>
+
+## Outputs
+
+| Item | Detail |
+|---|---|
+| **Conflict file list** | Every conflicting file, grouped by repository, with conflict type. |
+| **Resolved files** | Each file edited to remove conflict markers and staged with `git add`. |
+| **Build/test result** | Confirmation that the build passes and relevant tests are green after resolution. |
+| **Resumed operation** | `git merge --continue` or `git rebase --continue` result. |
+
+## Completion Checklist
+
+- `git status` shows no remaining `unmerged paths` in any repository.
+- No conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) remain in any file.
+- Build and tests pass after resolution.
+- You have confirmed that the resolved content represents the intended outcome of both sides.
+
+<Warning>
+  Tack **never silently picks a side** on a conflict. Every hunk requires an explicit decision from you. The AI provides context and a recommendation, but does not apply any change without your confirmation.
+</Warning>
+
+<Tip>
+  For `modify/delete` conflicts (one side modified a file, the other deleted it), pay close attention to the surrounding context. These conflicts often signal a larger structural change and the correct resolution depends on the intent of both branches.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Merge" icon="code-merge" href="/commands/merge">
+    Return to the merge flow after all conflicts are resolved.
+  </Card>
+  <Card title="Push" icon="cloud-arrow-up" href="/commands/push">
+    Push the resolved and merged commits to the remote.
+  </Card>
+</CardGroup>

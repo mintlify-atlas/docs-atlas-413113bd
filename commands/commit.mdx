@@ -1,0 +1,77 @@
+---
+title: "Commit: Auto-Generate and Apply a Local Commit"
+sidebarTitle: "Commit"
+description: "Stage all changes across workspace repositories, generate a Conventional Commits message from the diff and current task context, and commit without a second confirmation."
+---
+
+Tack's `commit` command stages and commits all pending changes across every repository in the current workspace. Rather than asking you to write a commit message, it generates one automatically in Conventional Commits format (`feat(scope): …`, `fix(scope): …`, etc.) by combining the staged diff with the current task recorded in `status.yaml`. Issuing `/tack commit` **is** the confirmation — the commit is applied immediately with no additional dialog. The command is local-only and never pushes to the remote.
+
+## Command Signature
+
+```text
+/tack commit [message]
+/tack ci [message]
+```
+
+**Triggers:** `commit`, `local commit`  
+**Short form:** `ci`  
+**Parameters:** optional commit message (overrides auto-generation when supplied)
+
+## What It Does
+
+<Steps>
+  <Step title="Scan for changes">
+    Iterates over every directory under `space/<YYYYMMDD>-<branch>/repo/<repo-name>/` and runs `git status`. Repositories with no changes are skipped. If **all** repositories are clean, the command reports "nothing to commit" and exits.
+  </Step>
+  <Step title="Initialise if necessary">
+    If a repository directory is not yet a git repository, `git init` is run before continuing. This covers newly created repositories that have never been initialised.
+  </Step>
+  <Step title="Generate the commit message">
+    When you supply a message as a parameter it is used as-is. Otherwise the message is generated from:
+    - `git diff --staged` (or `git diff` / `git status` when nothing is staged yet) for the actual change content.
+    - The `current.task` field in `status.yaml` for the work context.
+
+    The result follows the Conventional Commits format, e.g. `feat(auth): add JWT refresh token logic`. The message is **used immediately** — execution does not pause for approval.
+  </Step>
+  <Step title="Stage and commit">
+    Runs `git add -A` followed by `git commit` for each repository that has changes. Hooks are never bypassed (`--no-verify` is forbidden); if a hook fails, the issue must be fixed before the commit can be retried.
+  </Step>
+  <Step title="Report results">
+    Displays the commit hash, the full commit message, and the list of changed files (sourced from `git show --stat`) for every committed repository. No information is inferred or fabricated — only what git actually reports is shown.
+  </Step>
+</Steps>
+
+## Outputs
+
+| Item | Detail |
+|---|---|
+| **Commit hash** | The full SHA-1 hash of each new commit. |
+| **Commit message** | Conventional Commits-formatted message (auto-generated or user-supplied). |
+| **Changed files** | File-by-file summary from `git show --stat`. |
+| **Skipped repositories** | Repositories with no changes are noted as skipped. |
+
+## Completion Checklist
+
+- All repositories with changes have a clean working tree (or any intentionally retained changes are noted by the user).
+- Each commit's hash, message, and changed-file list have been shown as reported by git.
+- Nothing has been pushed to the remote.
+- No hooks were skipped (`--no-verify` was not used).
+
+<Note>
+  The commit message is auto-generated from the real diff and your current task context using Conventional Commits format. **Issuing `/tack commit` is your confirmation** — there is no second confirmation dialog. If you disagree with the result after the fact, correct it with a subsequent instruction (e.g. `git commit --amend`).
+</Note>
+
+<Warning>
+  **Git dual boundary:** `commit` operates exclusively on code repositories inside `space/<YYYYMMDD>-<branch>/repo/<repo-name>/`. The space-root repository (containing `AGENTS.md`, `harness/`, `wiki/`, and workspace documents) is managed automatically by the framework — you should never run `git commit` on it directly. Destructive operations such as `--force` and `--no-verify` are disabled.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Push" icon="cloud-arrow-up" href="/commands/push">
+    Push the new local commit to the remote branch.
+  </Card>
+  <Card title="Merge" icon="code-merge" href="/commands/merge">
+    Open a platform MR/PR or run a local merge after pushing.
+  </Card>
+</CardGroup>

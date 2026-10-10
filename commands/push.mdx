@@ -1,0 +1,72 @@
+---
+title: "Push: Send Local Commits to the Remote Repository"
+sidebarTitle: "Push"
+description: "Push the current workspace branch to its remote counterpart across all repositories, guiding you to associate a remote first if none is configured."
+---
+
+Tack's `push` command pushes the commits in each workspace repository to the corresponding remote branch. If a repository has no remote configured yet, the command stops and walks you through the association step before continuing — ensuring you are never left with a half-pushed state. Force-push is explicitly disabled; all pushes are standard, non-destructive operations.
+
+## Command Signature
+
+```text
+/tack push
+/tack ps
+```
+
+**Triggers:** `push`, `push remote`  
+**Short form:** `ps`  
+**Parameters:** none
+
+## What It Does
+
+<Steps>
+  <Step title="Check remote associations">
+    Runs `git remote -v` for each repository under `space/<YYYYMMDD>-<branch>/repo/<repo-name>/`. If a repository has **no remote configured**, the push stops for that repository and you are guided to:
+    1. Create the remote repository on your platform (GitHub, GitLab, Bitbucket, etc.).
+    2. Run `git remote add origin <url>` in the repository.
+    3. Re-issue `/tack push` to continue.
+  </Step>
+  <Step title="Push each repository">
+    For each repository that has a remote:
+    - **First push on this branch** — uses `git push -u origin <branch>` to establish upstream tracking at the same time.
+    - **Existing upstream** — uses plain `git push`.
+
+    Multiple repositories are pushed sequentially, one at a time.
+  </Step>
+  <Step title="Record MR/PR links">
+    If the remote platform responds with a link to create a Merge Request or Pull Request (GitHub, GitLab, and Bitbucket all do this in the push output), the URL is written back to the `mr_url` field of `space/<YYYYMMDD>-<branch>/status.yaml` for reference.
+  </Step>
+</Steps>
+
+## Outputs
+
+| Item | Detail |
+|---|---|
+| **Push result per repository** | Success or a clear explanation of why the repository was skipped. |
+| **Upstream tracking** | Established (`-u`) for any branch pushed for the first time. |
+| **`mr_url` in `status.yaml`** | Populated when the platform returns a MR/PR creation link. |
+
+## Completion Checklist
+
+- Every repository with local commits has been pushed (or has a clear action item for the user if no remote is configured).
+- First-time-pushed branches have upstream tracking established.
+- `mr_url` has been written to `status.yaml` when a link was returned by the platform.
+
+<Warning>
+  Force-push (`git push --force` / `git push --force-with-lease`) is **disabled**. If you need to rewrite remote history, do so outside of Tack's `push` command and make sure you have team consensus first.
+</Warning>
+
+<Note>
+  **Git dual boundary:** `push` applies only to code repositories inside `space/<YYYYMMDD>-<branch>/repo/<repo-name>/`. The space-root repository (`AGENTS.md`, `harness/`, `wiki/`, workspace documents) is managed automatically by the framework and must never be pushed manually.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Merge" icon="code-merge" href="/commands/merge">
+    Raise a platform MR/PR or run a local merge after the branch is on the remote.
+  </Card>
+  <Card title="Close" icon="circle-xmark" href="/commands/close">
+    Close the workspace after the merge is complete and the delivery is done.
+  </Card>
+</CardGroup>

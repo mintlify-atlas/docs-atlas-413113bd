@@ -1,0 +1,148 @@
+---
+title: "Plan: Detailed Development Design and Task Breakdown"
+sidebarTitle: "Plan"
+description: "Turns confirmed spec.md into a full development plan with optional multi-option architecture comparison, low-coupling module breakdown, dependency graph, and a task list synced to status.yaml."
+---
+
+The `plan` command is the second stage of Tack Harness's planning phase. It takes the confirmed `spec.md` and produces `plan.md` — a document that answers "what to build first, what comes next, and how to code each part". For complex tasks it first delegates parallel architect sub-agents to produce and compare multiple implementation options before asking the user to select one. All decisions that could interrupt the `code` phase are resolved here, so development can proceed with minimal interruptions.
+
+## Command Signature
+
+```bash
+/tack plan
+# Aliases:
+/tack p           # short form
+```
+
+**Triggers:** `详细设计`, `开发计划`, `任务拆解`, `plan`, `detailed design`, `development plan`, `task breakdown`
+
+## Prerequisites
+
+- `$work/spec.md` must exist and have been confirmed by the user (`progress.spec: true`).
+- `$work/status.yaml` and `spec.md` are re-read at the start of every `plan` run to respect the latest local state.
+
+## What It Does
+
+<Steps>
+  <Step title="Write Stage Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set stage plan next "生成并确认 plan.md"
+    ```
+  </Step>
+  <Step title="Collect Reusable Assets">
+    Extracts module names, service names, interface names, and entity names from `spec.md` as search keywords. In addition to normal wiki and code context loading, `plan` **explicitly searches for similar existing implementations** — classes with the same or similar names, utility methods, established patterns — to build a reusable-asset inventory. This inventory drives the "reuse first" principle throughout development.
+
+    Output: a "Reusable Assets" list with file paths, used by subsequent steps and by the `code` command.
+  </Step>
+  <Step title="Multi-Option Architecture Comparison (Complex Tasks)">
+    `plan` applies a complexity gate before drafting the plan body:
+
+    **Skip gate (simple tasks):** Single-module change, clear existing pattern to imitate, no architectural disagreement → one sentence explaining the decision, and proceed directly to the recommended approach. The chosen approach is still recorded in `plan.md`.
+
+    **Multi-option gate (complex tasks):** Triggered when any of the following apply:
+    - Cross-module or multi-repo collaboration
+    - Two or more reasonable implementation paths exist
+    - Changes affect existing architecture or public interfaces
+    - Non-trivial data structures, transactions, or compatibility changes are involved
+
+    When the gate fires, `plan` reads `$root/harness/agents/code-architect.md` and dispatches **2–3 parallel `code-architect` sub-agents**, each holding a different perspective:
+
+    | Perspective | Focus |
+    |-------------|-------|
+    | Minimum change | Smallest diff, maximum reuse of existing patterns |
+    | Clean architecture | Ideal structure, highest maintainability |
+    | Pragmatic balance | Realistic trade-off between the two |
+
+    Each instance produces an independent option. The main AI then assembles the results in `plan.md` under a "Option Comparison & Decision" section:
+
+    - Per option: core idea, change list (new/modified files and modules), data and interface changes, build order, Pros/Cons, risks and rollback
+    - **Comparison table** with at least: change surface, reuse level, maintainability, compatibility impact, effort, main risks
+    - **One explicit recommendation with reasons** — never a neutral listing
+
+    The user must select an option before module breakdown begins.
+  </Step>
+  <Step title="Generate the plan.md Body">
+    Using `spec.md`, `input.md`, wiki/code facts, and `$root/harness/template/plan.md`, the plan document covers:
+
+    - Requirement understanding (key constraints and assumptions)
+    - Development stages and sequence (stage, repo/module, dependencies, deliverables)
+    - Overall business logic (flows, states, rule branches)
+    - Data layer: entities, config entries (TCC/config center/feature flags), data changes
+    - Logic layer: domain services, key algorithms, transaction consistency, exception branches
+    - Interface layer: interfaces/methods, input/output params, upstream/downstream calls
+    - Per-stage coding implementation: changed file scope, implementation points, self-test method, risks and rollback
+    - Test strategy summary
+  </Step>
+  <Step title="Module Breakdown (Low-Coupling First)">
+    Decomposes the requirement into **as-independent-as-possible modules**, outputting a module table:
+
+    | Column | Description |
+    |--------|-------------|
+    | Module | Name |
+    | Responsibility | Single, clearly stated |
+    | Repo | Which repository |
+    | Exposed interface | API / events |
+    | Dependencies | Which other modules |
+    | Reusable assets | From the Step 2 inventory |
+
+    Module dependencies must form a **directed acyclic graph** — no cycles allowed. The dependency graph is documented in text form (e.g., `A → B` means B depends on A). Each module must be independently developable, independently verifiable, and independently demonstrable.
+  </Step>
+  <Step title="Task Breakdown">
+    Breaks modules down to `module → feature → task` level — each task independently developable and verifiable. Every task carries:
+
+    ```yaml
+    - id: "A-01"
+      title: "<task title>"
+      module: "<module name>"
+      repo: "<repo name>"
+      deps: []              # IDs of prerequisite tasks
+      acceptance: "<acceptance criteria>"
+      parallel_with: []     # Informational; scheduling uses deps
+      status: "pending"
+    ```
+
+    Tasks with no dependencies can run in parallel; tasks with dependencies are strictly ordered.
+  </Step>
+  <Step title="Pre-resolve Decision Points">
+    Every choice that could arise during coding is enumerated in a "Decision Record" section — technical selections, approach branches, boundary handling, exception strategies, config methods. For each:
+
+    - If it can be resolved from code facts or best practices: directly recorded as a conclusion.
+    - If it genuinely requires a business/user decision: listed for one-time confirmation.
+
+    **Agreement:** If `code` later encounters a multi-option choice not in this list, the AI automatically picks the engineering-optimal solution, records it in the commit message, and does not interrupt development.
+  </Step>
+  <Step title="Sync Tasks to status.yaml">
+    Writes the complete task list to `$work/status.yaml` under the `tasks` key (directly editing the YAML). All tasks start with `status: pending`.
+  </Step>
+  <Step title="Confirm with User (Human Review Gate)">
+    Confirms the selected implementation option, technical trade-offs, module boundaries, task granularity, and all pending decision items with the user. `code` cannot begin until the user approves.
+  </Step>
+  <Step title="Write Completion Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set progress.plan true next "执行 tech-design（或直接 code）"
+    ```
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/plan.md" icon="sitemap">
+    The full development plan: option comparison, module breakdown, dependency graph, per-stage coding guide, decision records, and task list.
+  </Card>
+  <Card title="$work/status.yaml (tasks)" icon="list-check">
+    Task list synchronized from plan.md. Each task has an ID, dependencies, acceptance criteria, and initial status `pending`.
+  </Card>
+</CardGroup>
+
+<Tip>
+  All decisions that might interrupt `code` must be resolved during `plan`. The goal is a fully front-loaded decision record so that the coding phase runs continuously, pausing only at genuine blockers.
+</Tip>
+
+## Next Steps
+
+Run `tech-design` to produce the technical review document (skipping requires explicit user confirmation), then `code` to begin task-by-task development.

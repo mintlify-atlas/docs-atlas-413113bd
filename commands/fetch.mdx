@@ -1,0 +1,83 @@
+---
+title: "Fetch: Pull and Sync the Latest Remote Code"
+sidebarTitle: "Fetch"
+description: "Run git fetch across every repository in the current workspace, auto-correct mismatched upstream tracking, and report each repo's ahead/behind status."
+---
+
+Tack's `fetch` command iterates over every repository linked to the current workspace and synchronises it with the remote — running `git fetch` only, never a silent merge or rebase. It also detects and auto-corrects upstream tracking mismatches so that each branch always tracks the correctly-named remote counterpart. Run `fetch` before `commit` or `merge` to make sure you are working from the latest remote state.
+
+## Command Signature
+
+```text
+/tack fetch
+/tack pull
+/tack f
+```
+
+**Triggers:** `pull`, `pull code`, `fetch`  
+**Short form:** `f`  
+**Parameters:** none
+
+## What It Does
+
+<Steps>
+  <Step title="Iterate over all workspace repositories">
+    Scans every directory under `space/<YYYYMMDD>-<branch>/repo/<repo-name>/`. Each directory is processed in turn by the `git-fetch-helper.sh` sync script.
+  </Step>
+  <Step title="Fetch all remote refs">
+    Runs `git fetch --all --prune` to download all remote references and prune any branches that have been deleted on the remote.
+  </Step>
+  <Step title="Verify and correct upstream tracking">
+    Checks whether the current branch is tracking the remote branch of the same name (`origin/<branch>`):
+    - **Already correct** — passes through immediately.
+    - **Upstream missing or tracking a different branch** (e.g. local `feat-x` tracks `origin/master`) — if `origin/<same-name>` exists, the tracking is auto-corrected with `git branch --set-upstream-to=origin/<branch>`.
+    - **`origin/<same-name>` does not exist** — sync stops for that repository; the available remote branches are listed and you are asked to run `git push -u origin <branch>` or set the upstream manually before proceeding.
+  </Step>
+  <Step title="Pull the latest commits">
+    Executes `git pull` to fast-forward the local branch to match the corrected upstream, then prints `git status -sb` showing the ahead/behind counts.
+  </Step>
+  <Step title="Handle conflicts immediately">
+    If `git pull` produces a conflict, automatic processing stops and the workflow transitions to [`solve`](/commands/solve) for guided, file-by-file resolution. Nothing is silently discarded.
+  </Step>
+  <Step title="Summarise results">
+    Prints a per-repository outcome table covering: success, detached HEAD (skipped), conflict (routed to `solve`), or upstream missing/misconfigured (awaiting manual intervention). Failed repositories and their reasons are listed individually.
+  </Step>
+</Steps>
+
+## Outputs
+
+| Outcome | What happens |
+|---|---|
+| **Success** | Local branch is aligned with `origin/<branch>`; `behind=0`. Local unpushed commits (`ahead>N`) are not treated as a sync failure. |
+| **Upstream auto-corrected** | Tracking rewritten to `origin/<same-name>` when the remote branch exists. |
+| **Upstream missing (no remote branch)** | Repository skipped; instructions provided to push the branch or set the upstream. |
+| **Conflict** | `git pull` aborted; workflow hands off to `solve`. |
+| **Detached HEAD** | Repository skipped with a note. |
+
+## Completion Checklist
+
+- Every repository has an explicit outcome (success / skipped / conflict / upstream missing).
+- Repositories with a wrong upstream have been auto-corrected to `origin/<same-name>` where the remote branch exists.
+- Successfully synced repositories have `behind=0`.
+
+<Note>
+  `fetch` runs **read-only on the remote** — it never rewrites history or discards local commits. It is safe to run at any point in your workflow, even mid-task.
+</Note>
+
+<Tip>
+  Always run `/tack fetch` before `/tack commit` or `/tack merge` to make sure your diff reflects the true gap between your branch and the current remote state.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Commit" icon="circle-check" href="/commands/commit">
+    Commit local changes after confirming you have the latest remote state.
+  </Card>
+  <Card title="Push" icon="cloud-arrow-up" href="/commands/push">
+    Push local commits to the remote branch.
+  </Card>
+  <Card title="Merge" icon="code-merge" href="/commands/merge">
+    Merge the feature branch into the target branch after pushing.
+  </Card>
+</CardGroup>

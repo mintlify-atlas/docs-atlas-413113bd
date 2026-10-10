@@ -1,0 +1,127 @@
+---
+title: "Create Repo: Create and Register a New Local Repository"
+sidebarTitle: "Create Repo"
+description: "Creates a local Git repo under repo/, links an optional remote, registers it in AGENTS.md, and refreshes wiki/manifest.md and wiki/code-understanding.md."
+---
+
+The `create-repo` command handles the case where a code repository you need for a workspace does not yet exist. It creates the directory under `$root/repo/`, runs `git init`, generates a minimal README and an appropriate `.gitignore`, optionally connects a remote origin, and then registers the new repo in the `AGENTS.md` service-to-repo mapping — all in one flow. Once registered, the repository is immediately available to `work` when you create or extend a workspace.
+
+## Command Signature
+
+```bash
+/tack create-repo [purpose]
+# Aliases:
+/tack cr             # short form
+/tack 新建仓库       # Chinese trigger
+/tack 建仓           # Chinese trigger
+/tack create repo    # natural language
+/tack new repository # natural language
+```
+
+## Parameters
+
+<ParamField path="purpose" type="string" optional>
+  What the new repository is for — the service it will host, its technology stack, and its relationship to existing services. Providing this upfront lets `create-repo` suggest better names and write a more accurate README.
+</ParamField>
+
+## Prerequisites
+
+<Note>
+  The project must already be a Tack space (`$root/AGENTS.md` present) and `$root/repo/` must exist. Typically used when the `code` command encounters a required repository that has not been initialised yet.
+</Note>
+
+## What It Does
+
+<Steps>
+  <Step title="Clarify the Repository Purpose">
+    Collects: what service this repo will host, the intended technology stack, and how it relates to existing services already registered in `service_repo_mapping`. If a purpose was passed as a parameter, this step uses it directly.
+  </Step>
+  <Step title="Suggest Repository Names">
+    Generates 2–3 English kebab-case name candidates based on the project keywords and the stated purpose. The user picks one or types their own, then confirms.
+
+    ```
+    Candidates:
+      1. payment-gateway
+      2. payment-service
+      3. billing-api
+
+    Your choice (or type your own):
+    ```
+  </Step>
+  <Step title="Initialise the Repository">
+    Creates and initialises the repository:
+
+    ```bash
+    mkdir -p $root/repo/<name>
+    cd $root/repo/<name>
+    git init
+    ```
+
+    Generates two files:
+    - **README.md** — repository name and one-sentence purpose statement
+    - **.gitignore** — tailored to the stated technology stack
+  </Step>
+  <Step title="Connect a Remote (Optional)">
+    Asks whether a remote repository URL is already available. If yes:
+
+    ```bash
+    git remote add origin <url>
+    ```
+
+    If no remote URL is ready yet, the step is skipped with a reminder to add it later once the repository has been created on the code platform.
+  </Step>
+  <Step title="Register the Mapping and Update Wiki">
+    Appends the new repository to the `AGENTS.md` project-info block:
+
+    ```bash
+    sh $root/harness/script/project.sh service-repo $root \
+      "<service-name>" "<repo-name>" "<repo-git-or-empty>" "repo/<name>"
+    ```
+
+    Then materialises or updates `wiki/manifest.md` and `wiki/code-understanding.md` following the same rules as `init` step 6:
+    - Real repository and service rows are rendered from `service_repo_mapping`
+    - The term→code-search and interface→business-scenario mapping tables are left empty (populated later by `ask` and `record`)
+    - Environment and account fact sections are filled only when actual facts are available — no fabrication
+    - The user is prompted to complete missing service information
+
+    Finally, the framework auto-commits:
+    ```bash
+    sh $root/harness/script/space.sh commit $root "chore(tack): register repo <name>"
+    ```
+  </Step>
+</Steps>
+
+## Outputs
+
+| Artefact | Location | Description |
+|---|---|---|
+| Git repository | `$root/repo/<name>/` | Initialised with `git init`, README, and .gitignore |
+| Remote origin | `$root/repo/<name>/` | Configured if URL was provided |
+| Service mapping | `$root/AGENTS.md` | New row in `service_repo_mapping` |
+| `wiki/manifest.md` | `$root/wiki/manifest.md` | Updated with new service/repo row |
+| `wiki/code-understanding.md` | `$root/wiki/code-understanding.md` | Updated with new repository overview row |
+
+<Info>
+  The first commit **inside** the new repository (the README and .gitignore) is the user's responsibility — initiated via the `commit` command when you are ready. The framework only auto-commits the `AGENTS.md` mapping change and wiki updates to the Tack space repository.
+</Info>
+
+## Post-Completion Checklist
+
+```
+- [ ] repo/<name>/ exists and git status runs without error
+- [ ] README.md has been created with the repository name and one-line purpose
+- [ ] Remote origin is configured (if a URL was provided)
+- [ ] AGENTS.md project-info block service_repo_mapping contains the new entry
+- [ ] wiki/manifest.md and wiki/code-understanding.md have been updated with real rows
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create a Workspace" icon="folder-plus" href="/commands/work">
+    Run `work` and select the new repository — it is now available in the service multi-select.
+  </Card>
+  <Card title="Commit Initial Files" icon="code-commit">
+    Use the `commit` command to make the first commit inside the new repository when your initial code is ready.
+  </Card>
+</CardGroup>

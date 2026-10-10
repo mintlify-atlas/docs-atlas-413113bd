@@ -1,0 +1,109 @@
+---
+title: "Merge: Review Changes and Merge the Feature Branch"
+sidebarTitle: "Merge"
+description: "Run a mandatory parallel code review across three perspectives, route to fix/follow-up/keep-as-is, then merge via platform MR/PR or local git merge."
+---
+
+Tack's `merge` command enforces a structured code-review gate before any merge takes place. A dedicated `code-reviewer` agent analyses the diff from three independent perspectives in parallel for large changes; small changes use a single reviewer. The review result is presented as Critical / Warning / Suggestion items, and you choose one of three explicit routes before the merge proceeds. After review, the command prefers a platform MR/PR (GitHub, GitLab, Bitbucket) over a local merge, and routes detected conflicts to [`solve`](/commands/solve) for guided resolution.
+
+## Command Signature
+
+```text
+/tack merge [target-branch]
+/tack m [target-branch]
+```
+
+**Triggers:** `merge`  
+**Short form:** `m`  
+**Parameters:** optional target branch (defaults to the repository's main trunk — `master` or `main` — confirmed with you before merging)
+
+## What It Does
+
+<Steps>
+  <Step title="Confirm merge direction">
+    Identifies the current branch name and the target branch (default: `master`/`main`) for every repository involved in the workspace. You confirm the target before anything is run.
+  </Step>
+  <Step title="Mandatory code review">
+    Loads `harness/agents/code-reviewer.md` and dispatches review tasks. The review methodology follows the dual-axis model in `harness/reference/code-review.md` (Spec compliance vs. Coding Standards), using the three-dot diff `git diff <target>...HEAD` as the evidence set.
+
+    **Spec sources:** `$work/spec.md`, `plan.md`, `tech-design.md`  
+    **Standards sources:** `harness/rule/coding-standards.md`, `harness/rule/security.md`
+
+    | Change scope | Reviewer configuration |
+    |---|---|
+    | Small / single-module change | One reviewer instance |
+    | Cross-module or multi-repository change | Three parallel instances: **Spec Compliance** · **Bugs & Correctness** · **Conventions & Security** |
+
+    Each issue is reported with a `file:line` reference and the rule or spec clause it violates. Historical (pre-existing) issues are listed separately and never block the merge.
+  </Step>
+  <Step title="Three-way decision (user-driven)">
+    The review outcome is grouped into **Critical**, **Warning**, and **Suggestion**. If no Critical or Warning items exist, a one-line summary is shown and the merge proceeds. When Critical or Warning items are present, you must choose one of:
+
+    <Tabs>
+      <Tab title="Fix Now">
+        The merge is cancelled. The workflow routes to `fix` (or `code`) to address the issues. After fixing, step 2 (review) is repeated before continuing.
+      </Tab>
+      <Tab title="Record as Follow-up">
+        Each item is logged to the `follow_ups` list in `$work/status.yaml` (including the issue description, file location, reviewing instance, and planned resolution date) or as a platform issue. You confirm the log, then the merge continues.
+      </Tab>
+      <Tab title="Keep As-is">
+        You explicitly accept the risk. The acknowledgement (who confirmed, what was accepted) is written to `$work/status.yaml`. The merge then continues.
+      </Tab>
+    </Tabs>
+
+    The decision and its record location are written to `status.yaml` (`current.next`) before proceeding.
+  </Step>
+  <Step title="Execute the merge">
+    Prefers raising a platform MR/PR (with the reviewer's pre-merge report serving as the submission gate). When a local merge is needed, runs `git merge <target-branch>` per repository.
+  </Step>
+  <Step title="Handle conflicts">
+    If any conflict is detected during the local merge, the command stops immediately and transitions to [`solve`](/commands/solve) for guided, file-by-file resolution. Nothing is silently resolved.
+  </Step>
+  <Step title="Post-merge sync">
+    After a successful local merge, you are prompted to `push`. After a platform merge, the MR/PR URL is written to `mr_url` in `status.yaml` and `progress.merged` is set to `true`. Deployment lane entries (PPE/PROD staging, BOE swimlanes) can be registered in the `deploy` block of `status.yaml` if a release plan is needed.
+  </Step>
+</Steps>
+
+## Outputs
+
+| Item | Detail |
+|---|---|
+| **Review report** | Critical / Warning / Suggestion items with `file:line` evidence. |
+| **`follow_ups` list** | Items deferred to follow-up, written to `status.yaml`. |
+| **`mr_url`** | Platform MR/PR link, written to `status.yaml` on platform merge. |
+| **`progress.merged`** | Set to `true` in `status.yaml` on successful merge. |
+| **`deploy` block** | Deployment lane registrations when a release plan is required. |
+
+## Completion Checklist
+
+- Review was executed; issues are grouped by severity with evidence.
+- Critical/Warning items have an explicit user decision; the result is written to `status.yaml`.
+- Every repository has a clear merge outcome (success / conflict routed to `solve` / user skipped).
+- `mr_url` updated (platform merge).
+- `deploy` block populated or explicitly skipped.
+
+<Note>
+  The `code-reviewer` agent runs with **three parallel instances** for large or cross-module changes — Spec Compliance, Bugs & Correctness, and Conventions & Security. For small changes a single instance is used. The review is mandatory and cannot be skipped; the AI never self-approves.
+</Note>
+
+<Warning>
+  Conflicts are **never silently resolved**. If a conflict is detected during a local merge, the command stops and hands off to `solve` for explicit, file-by-file decision-making.
+</Warning>
+
+<Note>
+  **Git dual boundary:** `merge` operates only on code repositories inside `space/<YYYYMMDD>-<branch>/repo/<repo-name>/`. The space-root repository (`AGENTS.md`, `harness/`, `wiki/`, workspace documents) is committed and managed automatically by the framework — never merge it manually. Destructive operations such as `--force` and `--no-verify` are disabled.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Solve" icon="wrench" href="/commands/solve">
+    Resolve merge conflicts file by file if the merge was interrupted.
+  </Card>
+  <Card title="Release Check" icon="list-check" href="/commands/release-check">
+    Produce a go-live checklist covering DB migrations, config changes, and API permissions.
+  </Card>
+  <Card title="Close" icon="circle-xmark" href="/commands/close">
+    Close the workspace after delivery is complete.
+  </Card>
+</CardGroup>

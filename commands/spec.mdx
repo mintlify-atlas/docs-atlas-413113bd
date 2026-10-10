@@ -1,0 +1,91 @@
+---
+title: "Spec: Requirement Planning and Overall Design"
+sidebarTitle: "Spec"
+description: "Reads input.md, the wiki, and code facts to produce spec.md — a story split, module boundaries, and acceptance criteria. Never modifies code or invents requirements."
+---
+
+The `spec` command is the first stage of the Tack Harness development workflow's planning phase. It reads the raw requirement from `input.md` alongside shared knowledge from the wiki and code facts, then organizes everything into a structured requirement planning document — `spec.md`. Think of `spec.md` as the project's **construction blueprint and acceptance contract**: it draws clear system and module boundaries, defines interactions, and establishes acceptance criteria. No implementation details, no data structures, no code — those belong in `plan.md`.
+
+## Command Signature
+
+```bash
+/tack spec
+# Aliases:
+/tack sp          # short form
+```
+
+**Triggers:** `需求规划`, `整体设计`, `spec`, `requirement planning`, `overall design`
+
+## Prerequisites
+
+- The current workspace `$work` (`$root/space/<YYYYMMDD>-<branch>/`) must exist with a valid `status.yaml`.
+- `$work/input.md` must contain real requirements. If it is empty, `spec` prompts you to fill it in — it will not invent requirements from nothing.
+
+## What It Does
+
+<Steps>
+  <Step title="Write Stage Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set status planning stage spec next "生成并确认 spec.md"
+    ```
+    This sets the workflow status to `planning` and records the current stage.
+  </Step>
+  <Step title="Locate Relevant Context">
+    Extracts business terms, service names, interface names, and module names from `input.md` as search keywords. Uses these keywords to `grep`/glob through the wiki and codebase — **locating first, then loading only the matched fragments**. The full codebase is never read wholesale. Matched facts (with source paths) are listed as context before drafting begins.
+
+    Context sources loaded in priority order:
+    1. `$work/input.md` — read in full (the raw requirement, never modified)
+    2. `$root/wiki/` and `$work/wiki/` — only files that actually exist; missing files mean no prior knowledge in that area, not an error
+    3. Code facts — only matched fragments
+  </Step>
+  <Step title="Generate spec.md">
+    Using `input.md` content, wiki/code context, and `$root/harness/template/spec.md` as the template, `spec` writes `$work/spec.md` with the following sections:
+
+    | Section | Content |
+    |---------|---------|
+    | **Background, Goals & Scope** | Why this work exists and what it does not cover |
+    | **Story Split** | Each story with priority, involved systems/modules, and acceptance criteria |
+    | **System & Module Impact** | Which systems and modules are affected |
+    | **Module Relations & Interactions** | How modules communicate with each other |
+    | **Boundary Agreements** | What each module is and is not responsible for |
+    | **Acceptance Criteria (Contract)** | The definitive checklist for "done" |
+    | **Risks & Open Questions** | Unclear points that require clarification |
+
+    <Note>
+      `spec` only organizes and structures the user-supplied content. It never rewrites the original meaning, invents new requirements, or adds implementation details (data structures, code steps) — those belong in `plan.md`.
+    </Note>
+  </Step>
+  <Step title="Clarify and Confirm (Human Review Gate)">
+    `spec` raises any open questions one by one and writes the answers back into `spec.md`. The user must **explicitly confirm** `spec.md` before the workflow can advance. This gate exists because every subsequent stage — `plan`, `code`, `testcode` — derives directly from `spec.md`.
+  </Step>
+  <Step title="Write Completion Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set progress.spec true stage spec next "执行 plan 生成详细设计"
+    ```
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/spec.md" icon="file-contract">
+    The requirement planning document. Contains story splits, module boundaries, interactions, boundary agreements, and acceptance criteria. Human-confirmed before anything else proceeds.
+  </Card>
+  <Card title="$work/status.yaml" icon="gear">
+    Updated with `status: planning`, `stage: spec`, and `progress.spec: true` after confirmation.
+  </Card>
+</CardGroup>
+
+## Context-Loading Discipline
+
+<Info>
+  Spec follows the three-tier fallback and anti-loop-amplification rules from `harness/rule/context-loading.md`. Keywords are derived from `input.md`; only matched wiki and code fragments are loaded — never a whole-repo read. This keeps token usage proportional to the actual scope of the requirement.
+</Info>
+
+## Next Steps
+
+Run `plan` to turn the confirmed `spec.md` into a detailed development plan and task breakdown.

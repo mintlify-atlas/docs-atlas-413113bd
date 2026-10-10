@@ -1,0 +1,232 @@
+---
+title: "Adding Custom Commands to Tack Harness"
+sidebarTitle: "Custom Commands"
+description: "Register new commands in Tack by adding a single Markdown file with YAML frontmatter. The scanner recognizes it instantly with zero skill changes."
+---
+
+Tack's extension model is based on dependency injection — a command is just a Markdown file. The skill itself is minimal and contains no command implementations; capabilities live entirely in Markdown files inside your project's `harness/cmd/` directory. Adding one file to `harness/cmd/` registers a new capability immediately, with no changes to the skill itself and no restarts required. The frontmatter at the top of the file is the injection declaration, and `scan-routes.sh` assembles all such declarations into a live route table at runtime.
+
+## Frontmatter Schema
+
+Every command file opens with a YAML frontmatter block that declares how the command is routed:
+
+```yaml
+---
+command: my-command
+short: mc
+triggers: my command, run my thing, /my-command
+params: [description (optional)]
+summary: What this command does in one sentence
+---
+```
+
+Each field has a specific role:
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `command` | ✅ | The primary command name used for routing. Must match the filename stem (e.g. `my-command.md` → `command: my-command`). |
+| `short` | ⚠️ Recommended | A 1–2 letter abbreviation (e.g. `mc`). Appears in `/tack help` and can be used as a trigger. |
+| `triggers` | ✅ | Comma-separated natural-language phrases and aliases that route to this command. Chinese and English are both supported (e.g. `部署到预发, deploy staging, /deploy-staging`). |
+| `params` | Optional | A human-readable description of accepted parameters, shown in `/tack help`. |
+| `summary` | ✅ | One sentence describing what the command does. Shown in the route table and `/tack help`. |
+
+<Note>
+The `command` value must exactly match the Markdown filename stem. If the file is `deploy-staging.md`, the frontmatter must read `command: deploy-staging`. `lint-harness.sh` enforces this and will report an ERROR if they differ.
+</Note>
+
+## File Placement
+
+Commands are stored under `harness/cmd/<group>/`. Three standard groups ship with Tack:
+
+| Group | Path | Contents |
+|-------|------|----------|
+| `base` | `harness/cmd/base/` | Project-space commands (`init`, `work`, `record`, `evolution`, etc.) |
+| `dev` | `harness/cmd/dev/` | Requirement-development commands (`spec`, `plan`, `code`, `close`, etc.) |
+| `git` | `harness/cmd/git/` | Git commands (`commit`, `push`, `merge`, `fetch`, etc.) |
+
+**Custom groups are fully supported.** Create any subdirectory under `harness/cmd/` and place your files there. The scanner discovers all subdirectories automatically, appending custom groups after the standard three in the route table.
+
+```
+harness/cmd/
+├── base/
+├── dev/
+├── git/
+└── ops/          ← your custom group
+    └── deploy-staging.md
+```
+
+<Tip>
+Any file whose name starts with `_` is ignored by the scanner. Use this to keep work-in-progress drafts (e.g. `_deploy-staging.md`) that don't pollute the route table until they are ready.
+</Tip>
+
+## Four Required Sections
+
+Every command file must contain exactly four Markdown sections (H2 headings). These are the four-section contract that `lint-harness.sh` enforces:
+
+<Steps>
+  <Step title="Prerequisites (Entry Gate)">
+    List every condition that must be true before the command runs. If a condition is not met, the AI states the gap and stops — it never silently skips an unfulfilled prerequisite.
+
+    ```markdown
+    ## 前置准入条件
+
+    - Already a tack space
+    - Working tree is clean (no uncommitted changes)
+    ```
+  </Step>
+
+  <Step title="Command Instructions">
+    The numbered steps the AI executes. Each step names its inputs (what to read or ask for), its action (what to run or generate), and its outputs (files created or state changed).
+
+    ```markdown
+    ## 指令内容
+
+    1. **Read target environment**
+       - Input: user's target environment name
+       - Action: look up the environment config in `wiki/manifest.md`
+
+    2. **Run deploy script**
+       - Action: `sh harness/script/deploy.sh $root <env>`
+    ```
+  </Step>
+
+  <Step title="Framework Auto-commit">
+    Declares any automatic `space.sh commit` the framework performs after this command completes. If the command makes no persistent changes to the harness, write a note stating that no auto-commit is needed.
+
+    ```markdown
+    ## 框架自动提交（无需用户操作）
+
+    - Action: after confirmation, run
+      `sh $root/harness/script/space.sh commit $root "chore: deploy to staging"`
+    - Boundary: follows `harness/rule/git-boundary.md`
+    ```
+  </Step>
+
+  <Step title="Post-completion Checklist (Exit Gate)">
+    Objective, checkable conditions that must all be true before the command is considered complete. Each item is something that can be verified (a file exists, a script exits 0, a field is set).
+
+    ```markdown
+    ## 后置完成检验
+
+    - [ ] Deploy script exited 0
+    - [ ] `status.yaml` `current.stage` updated to `deployed`
+    - [ ] No uncommitted changes in the worktree
+    ```
+  </Step>
+</Steps>
+
+## Full Template
+
+The scaffold for a new command is at `harness/template/cmd.md`. Its structure matches exactly the four-section contract described above:
+
+```markdown
+---
+command: example
+short: ex
+triggers: 示例命令, example
+params: [参数说明]
+summary: 一句话说明这个命令的作用
+---
+
+# example 示例命令
+
+> Files starting with `_` are not registered. Rename this file (remove the `_` prefix) to register it.
+
+## 前置准入条件
+
+- Conditions that must be true before the command runs
+- State any gap and stop if a condition is not met
+
+## 指令内容
+
+1. **Step name**
+   - Input: what to read or ask for
+   - Action: what to run or generate
+
+## 框架自动提交（无需用户操作）
+
+- Action: `sh $root/harness/script/space.sh commit $root "chore: <message>"`
+
+## 后置完成检验
+
+- [ ] Objective, checkable completion condition
+
+## 下一步建议
+
+- The natural next command after this one
+```
+
+## Creating a Command with `/tack record`
+
+The fastest way to add a new command is to use `/tack record`. You only need to supply the `command` name — Tack generates the short form, triggers (both Chinese and English), and a full command body automatically. The scanner recognizes it immediately after the file is written.
+
+```
+/tack record
+> command: deploy-staging
+```
+
+`record` first scans all existing commands and attempts to merge the new capability into a related entry. If no suitable entry exists, it creates a new file using `harness/template/cmd.md` as the scaffold. After you review the draft and confirm, the file is written and committed automatically.
+
+<Info>
+`/tack record` can also land workflows, rules, wiki entries, and AGENTS.md resident agreements — not just commands. See the [Self-Evolution](/extending/self-evolution) page for the full picture.
+</Info>
+
+## Verifying the Command Registers
+
+After writing the file, confirm it appears in the live route table:
+
+```bash
+# List all workflows, commands, and delegatable roles
+sh harness/script/scan-routes.sh list harness
+
+# Resolve a specific trigger phrase
+sh harness/script/scan-routes.sh resolve harness "deploy staging"
+```
+
+`resolve` exits with code `0` (unique hit), `1` (no hit), or `2` (multiple hits). A `0` exit means the trigger routes cleanly to your command. A `2` exit means a trigger token clashes with an existing command — rename the conflicting trigger to fix it.
+
+## Linting Your Command
+
+Before relying on a new command, run the structure self-check:
+
+```bash
+sh harness/script/lint-harness.sh harness
+```
+
+`lint-harness.sh` reports two severity levels:
+
+<Tabs>
+  <Tab title="Errors (must fix)">
+    | Check | Cause |
+    |-------|-------|
+    | Missing frontmatter | File does not start with `---` |
+    | Unclosed frontmatter | Opening `---` has no matching closing `---` |
+    | Missing required field | `command`, `triggers`, or `summary` absent |
+    | Name/filename mismatch | `command: foo` in a file named `bar.md` |
+    | Four sections missing | One or more of the required H2 sections is absent |
+    | Route token conflict | A `name`, `short`, or trigger word already belongs to another command or workflow |
+  </Tab>
+  <Tab title="Warnings (informational)">
+    | Check | Cause |
+    |-------|-------|
+    | `short` missing | Optional but recommended; a short form makes the command easier to type |
+    | Reference orphan | A file in `harness/reference/` is not referenced by any command, workflow, agent, or rule |
+  </Tab>
+</Tabs>
+
+The tool exits with code `0` when there are no errors (warnings are allowed), and `1` when at least one error is present.
+
+## Update Safety
+
+Running `/tack update` refreshes the `script/`, `template/`, `reference/`, and `workflow/` directories only. Inside `cmd/`, updates are strictly additive — **same-named files are never overwritten**. Your custom commands survive every upgrade intact.
+
+```
+update only touches:
+  harness/script/       ← refreshed
+  harness/template/     ← refreshed
+  harness/reference/    ← refreshed
+  harness/workflow/     ← refreshed
+  harness/cmd/          ← additive only; your files are never overwritten
+  harness/rule/         ← preserved
+  AGENTS.md             ← preserved
+```

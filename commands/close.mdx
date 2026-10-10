@@ -1,0 +1,172 @@
+---
+title: "Close: Workspace Wrap-up, Wiki Distillation, and Self-Evolution"
+sidebarTitle: "Close"
+description: "Validates delivery state, outputs a four-part delivery summary, distills workspace knowledge into the wiki, crystallizes guidance into harness rules, removes worktrees, and marks the workspace completed."
+---
+
+The `close` command is the final step of every Tack Harness workspace lifecycle. It performs a complete wrap-up sequence: validating the delivery state, producing a structured delivery summary, distilling reusable knowledge from workspace artifacts into the shared wiki, consuming recorded guidance entries to evolve the harness itself, removing worktrees, and marking the workspace as `completed` in `AGENTS.md`. Each of these stages requires or offers a human confirmation point — `close` never silently discards knowledge or destructively modifies the harness without your approval.
+
+<Note>
+  If the workspace is not in a completed state (e.g., there are unfinished tasks, uncommitted changes, or an unmerged MR), `close` lists the incomplete items and asks for your confirmation before proceeding. You can force-close an incomplete workspace, but any incomplete items should be logged as follow-ups.
+</Note>
+
+## Command Signature
+
+```bash
+/tack close
+# Aliases:
+/tack cl          # short form
+```
+
+**Triggers:** `关闭工作区`, `结束`, `close`, `close workspace`, `finish`
+
+## Prerequisites
+
+`close` always re-reads `$work/status.yaml` at the start — it never trusts stale context.
+
+## What It Does
+
+<Steps>
+  <Step title="State Validation and Confirmation">
+    Reads `status`, `progress`, and `tasks` from `$work/status.yaml`.
+
+    **Completed state** (`status` is `merged` or `completed`, or `progress.merged: true`): treated as delivery-confirmed. No further prompts — proceeds directly to wrap-up.
+
+    **Non-completed state** (e.g., `developing`, `reviewing`, or tasks that are not `done`, unpushed commits, or an unmerged MR): lists all incomplete items with their associated risks, then asks:
+
+    > "Are you sure you want to close this workspace? Incomplete items will be recorded as follow-ups."
+
+    - User confirms → continue.
+    - User does not confirm → `close` is aborted; the user is guided back to the appropriate command (e.g., `merge`, `code`).
+
+    If the workspace is already `completed` but worktrees are still present (indicating a previously interrupted close), `close` resumes the remaining steps.
+  </Step>
+  <Step title="Delivery Check">
+    For each involved repository:
+    - No uncommitted changes (or user confirms keeping them).
+    - All local commits have been pushed.
+    - The MR has been merged, or the user confirms skipping.
+
+    Checks `status.yaml` for `mr_url` and `tech_doc_url` — prompts to fill in if missing.
+
+    Checks the `deploy` block for swim lanes with `deploying` or `deployed` status — reminds the user to recycle them on the deployment platform (non-blocking, but the handling must be confirmed).
+
+    Checks `$work/run/local/` — reminds the user that this directory is gitignored and asks whether to clean it up locally (non-blocking).
+  </Step>
+  <Step title="Delivery Summary (Four-Part Structure)">
+    Produced **before** worktrees are removed (git log still accessible) and before wiki distillation. Sourced entirely from workspace artifacts and git facts — nothing is invented.
+
+    | Part | Content |
+    |------|---------|
+    | **Built content** | Delivered features mapped to spec stories and `done` tasks |
+    | **Key decisions** | Implementation approaches and important decision records from `plan.md` |
+    | **Changed files** | Per-repo commit list and main changed files (from `git log <target>..HEAD --stat`), with MR link |
+    | **Suggested next steps** | Follow-ups registered at `merge`, deferred/skipped items, testing and release suggestions |
+
+    The summary is presented inline in the conversation — no new file is created unless you request it.
+  </Step>
+  <Step title="Distill Knowledge into the Wiki">
+    Sources: `input.md`, `spec.md`, `plan.md` (including decision records), `tech-design.md`, `$work/wiki/`, and `status.yaml` metadata (`mr_url`, `tech_doc_url`). **Existing root wiki pages are used only to determine merge locations** — not as fact sources (preventing content loop-amplification).
+
+    Candidate knowledge is classified into four destinations:
+
+    | Category | Destination |
+    |----------|-------------|
+    | Code-external facts (environment config, middleware/platform addresses, non-sensitive accounts) | `$root/wiki/manifest.md` |
+    | Stable navigation anchors (business term ↔ code entry, interface ↔ business scenario) | `$root/wiki/code-understanding.md` |
+    | Business background knowledge (domain context, terminology definitions, original business materials) | `$root/wiki/business-understanding.md` |
+    | Technical decisions and engineering conventions (plan decision records, code-external project rules) | `$root/wiki/decisions.md` |
+
+    **Boundary:** Volatile code implementation details, call chains, and module internals do **not** enter the wiki (code is the source of truth for those). Generic coding standards go to rules (Step 5), not decisions. Nothing without a verifiable workspace source is distilled.
+
+    A candidate list with proposed destinations and **source references** (e.g., `space/<workspace>/plan.md`) is presented to the user. You can accept all, pick specific items, or decline entirely. Items that contradict existing wiki entries are preserved with evolution history. **No wiki entries are written without your explicit confirmation.**
+  </Step>
+  <Step title="Self-Evolution: Crystallize Guidance into Harness">
+    Reads all `guidance` entries in `status.yaml` with `status: raw` (entries automatically recorded throughout the workspace lifecycle). If none exist, this step is skipped with a brief note.
+
+    For each raw entry, evaluates per `harness/rule/record-classification.md` whether it represents a **cross-workspace-reusable operating habit or process correction** that should be crystallized into a `workflow`, `cmd`, or `rule` file. One-time process information is classified as non-fixable.
+
+    Presents the candidate list to the user:
+
+    | Column | Content |
+    |--------|---------|
+    | Source entry ID | The `guidance` item ID |
+    | Scenario & user intent | What the user was correcting or refining |
+    | Suggested landing point | Specific `workflow/cmd/rule` file to merge into or create |
+    | Action | Merge into existing file or create new |
+
+    **No harness changes are made without your confirmation.** Accepted items are processed via the `record` flow — merging into existing files where possible, creating new files only when no suitable target exists. After landing:
+
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      guidance <id> distilled <relative-path-from-$root ...>
+    ```
+
+    Declined or non-fixable entries are marked `dismissed`. Entries where you defer the decision remain `raw` — they do not block closing.
+
+    **Landing point verification:** After all distillations are recorded:
+    ```bash
+    sh $root/harness/script/check-guidance.sh $root <workspace>
+    ```
+    Confirms that all `distilled` entries reference files that actually exist. Any broken references are fixed before continuing.
+  </Step>
+  <Step title="Remove Worktrees">
+    For standard development workspaces:
+    ```bash
+    sh $root/harness/script/git-worktree-helper.sh remove $root <workspace>
+    ```
+    Removes all worktrees under `$work/repo/`. If a worktree has uncommitted changes, the script stops and reports the situation for user confirmation before proceeding.
+
+    For branch-operation workspaces (`branch-op` workflow): uses `branch-op.sh cleanup` to remove both working worktrees and the two temporary branches (`A-ts`, `B-ts`).
+  </Step>
+  <Step title="Archive the Workspace">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml set status completed
+    sh $root/harness/script/project.sh work-set $root <work_id> completed
+    ```
+
+    Marks the workspace `completed` in both `status.yaml` and the `AGENTS.md` project information block. Asks whether to retain the workspace documents (`spec.md`, `plan.md`, `tech-design.md`, `status.yaml`) or archive/clean them.
+  </Step>
+  <Step title="Clear Context and Version Check">
+    Clears the `$work` context variable and outputs the list of remaining active workspaces (read from `AGENTS.md`).
+
+    Runs a version check per `harness/rule/update-check.md`:
+    ```bash
+    sh $root/harness/script/check-update.sh $root
+    ```
+    If a new version is available, every update between the local and latest versions is shown verbatim. Just say "update" to upgrade.
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="Delivery summary (inline)" icon="list-check">
+    Four-part summary presented in the conversation. Contains built content, decisions, changed files, and next steps. Sourced from git facts and workspace documents.
+  </Card>
+  <Card title="$root/wiki/ (updated entries)" icon="book">
+    New or merged wiki entries in manifest.md, code-understanding.md, business-understanding.md, and decisions.md. Each entry carries its source reference. Written only after your confirmation.
+  </Card>
+  <Card title="Harness files (evolved)" icon="screwdriver-wrench">
+    workflow, cmd, or rule files updated with crystallized guidance. Only written after your confirmation. Landing points verified by `check-guidance.sh`.
+  </Card>
+  <Card title="AGENTS.md and status.yaml" icon="gear">
+    Workspace status set to `completed` in both files. Worktrees removed. Context cleared.
+  </Card>
+</CardGroup>
+
+## Key Constraints
+
+<Warning>
+  Wiki distillation and harness self-evolution both require explicit human confirmation before writing. `close` never silently modifies shared knowledge or harness files.
+</Warning>
+
+<Tip>
+  If you are not ready to distill knowledge or crystallize guidance, you can defer those items. Deferred guidance entries remain `raw` in `status.yaml` and can be processed later with `evolution` or `record`. They do not block closing.
+</Tip>
+
+## Next Steps
+
+- To start a new requirement, run `work` to create a new workspace.
+- If a new Tack Harness version was found, say "update" to upgrade.

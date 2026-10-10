@@ -1,0 +1,121 @@
+---
+title: "Fix: Keep Spec, Plan, and Code in Sync After Changes"
+sidebarTitle: "Fix"
+description: "Two fix paths: requirement fixes propagate spec → plan → tasks → code; code fixes repair the implementation first, then evaluate whether spec and plan need to follow. Documentation and code never drift."
+---
+
+The `fix` command handles corrections discovered at any point after the planning phase — whether a requirement was misunderstood, needs changing, or the implementation turned out to be incorrect. Rather than allowing documentation and code to drift apart, `fix` enforces a strict consistency rule: `spec.md`, `plan.md`, the `tasks` list in `status.yaml`, and the code in `$work/repo/` must always agree. The command selects the appropriate repair path based on what was found wrong.
+
+## Command Signature
+
+```bash
+/tack fix [description of what to fix]
+# Aliases:
+/tack fx          # short form
+```
+
+**Triggers:** `修正`, `需求修正`, `修改需求`, `修正代码`, `fix`, `requirement fix`, `fix requirement`, `code fix`
+
+## Prerequisites
+
+- `$work/spec.md` must exist (along with `plan.md` and some code in most cases).
+- `$work/status.yaml`, `spec.md`, and `plan.md` are re-read at the start of every `fix` run.
+
+## Two Fix Paths
+
+`fix` first determines which path applies based on your description. If it cannot tell, it asks one clarifying question.
+
+<Tabs>
+  <Tab title="Path A — Requirement Fix">
+    **Trigger:** The requirement was misunderstood, has changed, or an ambiguity needs to be resolved.
+
+    **Direction:** Documentation leads — `spec` → `plan` → `tasks` → `code`.
+
+    <Steps>
+      <Step title="Write Fix Status">
+        Executes:
+        ```bash
+        sh $root/harness/script/work-status.sh $work/status.yaml \
+          set stage fix task 需求修正 next "修正 spec.md"
+        ```
+        Affected tasks in `status.yaml` are set to `blocked` as needed.
+      </Step>
+      <Step title="Update spec.md">
+        Applies the correction to the relevant sections of `spec.md` (boundaries, stories, acceptance criteria). Only affected sections are changed. A revision note (what changed, why, and the date) is added.
+      </Step>
+      <Step title="Update plan.md">
+        Updates the affected design sections and "Decision Record". Adjusts the module breakdown and task list: adds new tasks, removes obsolete ones, recalculates `deps` and parallelism.
+      </Step>
+      <Step title="Sync status.yaml Tasks">
+        Edits the YAML directly to keep the task list consistent with `plan.md`:
+        - New tasks → `pending`
+        - Already-`done` tasks that are now affected → reset to `pending` (with a note explaining why)
+      </Step>
+      <Step title="Fix the Code">
+        Re-implements the affected tasks using the same `code` discipline: reuse-first, dependency order, grep-locate, implement per corrected docs.
+      </Step>
+      <Step title="Restore Stage Status">
+        After the user reviews and confirms, restores the status to the appropriate stage.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Path B — Code Fix">
+    **Trigger:** The implementation doesn't match the requirement, or a code behavior is simply wrong.
+
+    **Direction:** Code leads — fix the code first, then evaluate whether documentation needs to follow.
+
+    <Steps>
+      <Step title="Write Fix Status">
+        Executes:
+        ```bash
+        sh $root/harness/script/work-status.sh $work/status.yaml \
+          set stage fix task 代码修正 next 修正代码
+        ```
+      </Step>
+      <Step title="Fix the Code">
+        Uses `grep` to locate the problem code and any similar correct implementations. Fixes **only the implementation** to make the behavior correct. Does not touch `spec.md` or `plan.md` at this step. Sets the affected task back to `in_progress`, then to `done` after build and tests pass.
+      </Step>
+      <Step title="Evaluate Documentation Consistency">
+        After the code fix, checks `spec.md` and `plan.md` against the corrected implementation:
+
+        - **Pure bug / implementation deviation** — requirements and plan were correct; the code was just wrong. Documents stay unchanged; a fix note is recorded.
+        - **Fix reveals a requirement or plan gap** — the fix exposed something the docs didn't cover. In this case, inform the user of the discrepancy and apply Path A steps 2–4 to bring the docs in line.
+      </Step>
+      <Step title="Restore Stage Status">
+        After the user reviews and confirms, restores the status.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Shared Rules
+
+<Note>
+  Regardless of path, `fix` enforces the four-way consistency rule: `spec.md` ↔ `plan.md` ↔ `tasks` ↔ code. No deviation is left unresolved.
+</Note>
+
+- Code changes happen only inside `$work/repo/` — destructive Git operations (`force push`, `reset --hard`) are forbidden.
+- Every fix is documented: either in `plan.md`'s "Revision Record" section or reflected in `status.yaml`'s log (fix point, path A/B, date).
+- Context loading follows `harness/rule/context-loading.md`: grep the relevant spec/plan sections and code files — never a full-repo read.
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/spec.md (Path A)" icon="file-pen">
+    Updated with the corrected requirements. Affected sections revised, revision note appended.
+  </Card>
+  <Card title="$work/plan.md" icon="sitemap">
+    Updated design sections, decision records, module table, and task list brought in sync with the fix.
+  </Card>
+  <Card title="$work/status.yaml (tasks)" icon="list-check">
+    Task statuses updated to reflect the fix: new tasks added as `pending`, regressed tasks reset to `pending`.
+  </Card>
+  <Card title="Code in $work/repo/" icon="code-commit">
+    Corrected implementation. Build and tests pass before the task is marked `done` again.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+- Resume the interrupted phase (`code`, `testcode`, or `code-review`).
+- When all corrections are complete, run `commit` — include the fix description in the commit message.

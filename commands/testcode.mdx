@@ -1,0 +1,120 @@
+---
+title: "Test Code: Requirement-Code Consistency Review via Unit Tests"
+sidebarTitle: "Test Code"
+description: "On-demand unit testing that uses test cases to find gaps between spec/plan acceptance criteria and the actual implementation. When tests expose problems, fix the code — not the tests."
+---
+
+The `testcode` command uses unit tests as a **code review instrument**, not just a coverage tool. Its primary purpose is to compare the implementation against `spec.md` and `plan.md` acceptance criteria, identify deviations, missing boundary cases, and latent defects, and then fix the code. Writing tests that expose real problems is the goal; 90% coverage is one exit criterion among several — not the sole purpose. Because `testcode` is an on-demand tool, running it (or not running it) has no effect on whether you can commit and merge.
+
+<Warning>
+  **`testcode` is on-demand only.** After `code` completes, you can commit and merge directly. The AI will never ask "shall we run tests?" or prompt you to run `testcode`. Trigger this command only when you actively want unit-test-driven consistency review or need to add test coverage.
+</Warning>
+
+## Command Signature
+
+```bash
+/tack testcode [task-id]
+# Aliases:
+/tack tc          # short form
+```
+
+**Triggers:** `单测`, `生成单测`, `单元测试`, `testcode`, `unit test`, `unit testing`
+
+Providing an optional `task-id` scopes the review to that task. Without an argument, `testcode` targets the most recently completed task that has not yet been covered.
+
+## Prerequisites
+
+- The target task must have implementation code in `$work/repo/`.
+- The repository must have runnable test and coverage tools. If none exist, `testcode` discusses how to introduce them before proceeding — it never unilaterally adds heavyweight dependencies.
+
+## Core Principles
+
+<CardGroup cols={2}>
+  <Card title="Tests are a means, not an end" icon="bullseye">
+    Design test cases that **expose real problems**, not ones that simply run without assertions. Coverage reaching 90% is a consequence of thorough testing — not the target itself.
+  </Card>
+  <Card title="Assertions target spec, not code behavior" icon="file-contract">
+    Every assertion is written against the expected behavior described in `spec.md` or `plan.md`. When code behavior conflicts with the spec, **fix the code** — never change the test to match incorrect behavior (unless the user confirms the spec was wrong).
+  </Card>
+  <Card title="No coverage-padding tests" icon="ban">
+    Do not write tests that pass trivially (empty assertions, assertions that mirror implementation details). Untestable code must be explicitly documented with a reason.
+  </Card>
+  <Card title="Fix code, not tests" icon="wrench">
+    When a test fails because the code is wrong, the code is fixed. Only rewrite a test if the user confirms the requirement itself was misunderstood.
+  </Card>
+</CardGroup>
+
+## What It Does
+
+<Steps>
+  <Step title="Determine Scope and Write Stage Status">
+    Identifies the new/modified logic for the target task from `status.yaml` and the code diff. Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set stage testcode task "<task-id>" \
+      next "需求-代码一致性审查 + 缺陷发现 + 覆盖率达标"
+    ```
+  </Step>
+  <Step title="Requirement-Code Consistency Review (Before Writing Any Tests)">
+    Compares `spec.md`'s business rules and acceptance criteria against `plan.md`'s test strategy and the actual implementation, checking for three categories of issue:
+
+    | Category | What it means |
+    |----------|---------------|
+    | **Not implemented** | A behavior required by spec is absent from the code |
+    | **Implementation deviation** | Code behavior differs from spec's expected output, error handling, boundary value, or timing |
+    | **Missing boundary** | Null values, extreme values, concurrency, error recovery, timeouts, resource release are not handled |
+
+    Output: a findings list (`spec criterion → code location → issue type → to be verified`). This list becomes the blueprint for test design.
+  </Step>
+  <Step title="Defect and Boundary Analysis">
+    For each finding, designs a test case that **actively exposes the problem** — asking "what input would make this code fail?" before writing the case. Covers: core branches, boundary conditions, exception paths, concurrency, and resource scenarios.
+  </Step>
+  <Step title="Write, Run, and Fix Loop">
+    Iterates through the following cycle until all findings are resolved and coverage is ≥ 90%:
+
+    1. Load `coding-standards.md` (substantive sections only; language-specific file if present). Reference `reference/tdd.md` and `harness/template/test-plan.md` as needed.
+    2. Write tests that imitate the repository's existing test style.
+    3. Run tests — **expect** the tests designed to expose defects to fail initially.
+    4. When a test fails, fix the **code** (not the test). Re-run until the test passes.
+    5. Run coverage tooling. For uncovered **meaningful branches**, write additional cases. For untestable code, explain why and document it.
+
+    The cycle: **review → design exposing cases → run → fix code → regress**.
+  </Step>
+  <Step title="Review and Write Completion Status">
+    Presents three artifacts to the user for review:
+
+    - Findings and defect-fix list (spec criterion / issue / fix commit or location)
+    - New test case list with before/after coverage comparison
+    - Uncovered lines with reasons; explanation of any declared-untestable code
+
+    After user approval:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set progress.testcode true next commit
+    ```
+  </Step>
+  <Step title="Deployment Verification Registration (Optional)">
+    If the user needs to deploy to a swim lane for integration testing, the deployment facts (repo, environment, lane, route, build, URL, status) are recorded in `status.yaml`'s `deploy` block. `testcode` does not perform the deployment — it only registers the facts. Lane topology details are sourced from `$root/wiki/manifest.md`.
+  </Step>
+</Steps>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="Test files in $work/repo/" icon="vial">
+    New or updated unit tests written in the repository's existing test style. All tests pass before the command completes.
+  </Card>
+  <Card title="Fixed code in $work/repo/" icon="wrench">
+    Any defects uncovered during the review cycle are fixed in the source code, not the tests.
+  </Card>
+  <Card title="Coverage report" icon="chart-bar">
+    New/modified code reaches ≥ 90% coverage. Exceptions are documented with reasons.
+  </Card>
+  <Card title="$work/status.yaml" icon="gear">
+    Updated with `progress.testcode: true` after user approval.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+Run `commit` to commit the code, tests, and any defect fixes. If this is part of a testing workflow, complete the remaining testing workflow steps.

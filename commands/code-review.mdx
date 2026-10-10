@@ -1,0 +1,156 @@
+---
+title: "Code Review: Function-by-Function Diff Analysis Report"
+sidebarTitle: "Code Review"
+description: "Uses plan/tech-design as spec and a three-dot diff as facts. Delegates three parallel reviewer perspectives. Produces $work/code-review.md with per-finding severity and a merge recommendation."
+---
+
+The `code-review` command produces an independent, archivable code review report by combining the `plan.md`/`tech-design.md` spec with the three-dot diff against the target branch. It works at function-and-method granularity, assessing not just what changed but whether the changes are correct, complete, and safe. For large, multi-module changes, it delegates three parallel `code-reviewer` sub-agents across three perspectives — spec compliance, bugs and correctness, and conventions and security. The result is `$work/code-review.md`, a report you can share with the team, archive, and reference during the `merge` gate check.
+
+## Command Signature
+
+```bash
+/tack code-review [target-branch]
+# Aliases:
+/tack rv          # short form
+```
+
+**Triggers:** `代码审查`, `审查报告`, `code-review`, `codereview`, `review`, `code review`, `review report`
+
+The `target-branch` parameter defaults to the main trunk (`master`/`main`), detected automatically. Override it to review against a different base.
+
+## Prerequisites
+
+- `$work/plan.md` must be confirmed (`progress.plan: true`).
+- `$work/tech-design.md` should exist (if absent, the report header notes that the spec comes from `plan.md` only).
+- All changes in the involved repositories must be **committed** — the review is based on committed facts, not unstaged diffs. A `fetch` before reviewing is recommended.
+- Only read operations are performed. All Git reads happen within `$work/repo/<repo-name>/` — the main `$root/repo/` is never touched.
+
+## What It Does
+
+<Steps>
+  <Step title="Write Stage Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set stage review task 代码审查 next 生成code-review.md
+    ```
+    Does not change the workflow `status` field.
+  </Step>
+  <Step title="Determine Scope and Export Diff Facts">
+    Aggregates the repository list from `status.yaml` tasks and `plan.md`'s module table. For each repo:
+
+    ```bash
+    sh $root/harness/script/git-diff-context.sh \
+      $work/repo/<repo-name> $root/.tack/tmp/review [target-branch]
+    ```
+
+    The script returns `target_ref`, `merge_base`, `head`, `empty`, `files_changed`, `diff_file`, and `stat_file`. Repos where `empty: true` are explained to the user and skipped. If **all** repos are empty, the review halts with "no difference from target branch".
+  </Step>
+  <Step title="Load Spec and Standards">
+    Spec sources:
+    - `$work/plan.md` — module breakdown, per-stage coding guide, decision records
+    - `$work/tech-design.md` — technical approach
+    - `$work/spec.md` — acceptance criteria (supplementary)
+
+    Standard sources:
+    - `$root/harness/rule/coding-standards.md` — substantive sections only (empty sections skipped)
+    - `$root/harness/rule/security.md` — **mandatory** when the diff touches external input, auth, credentials, database queries, or file paths
+
+    Context: `$work/wiki/` analysis documents for call-chain context (for impact analysis). Loaded by keyword search only.
+  </Step>
+  <Step title="Function-by-Function Analysis (Dual-Axis Review)">
+    Every changed function/method is analyzed on two axes:
+
+    **Spec axis (does it do what it should?):**
+    - Is the implementation faithful to `plan.md`'s coding guide and `tech-design.md`'s technical approach?
+    - Are there missing functionality, partial implementations, or scope creep?
+    - Are there obvious bugs — boundary conditions, null values, concurrent/transactional issues, swallowed errors, resource leaks?
+
+    **Standards axis (is it written well?):**
+    - Does it follow `coding-standards.md` and established code-smell guidelines?
+    - Are there security issues (injection, unauthorized access, credential exposure)?
+    - Are there performance issues (N+1 queries, unbounded loops, missing pagination)?
+    - Does it break compatibility (changed function signatures, modified protocol fields affecting existing callers)?
+
+    For large, cross-module, or multi-repo changes, `code-review` reads `$root/harness/agents/code-reviewer.md` and dispatches **three parallel `code-reviewer` sub-agents**, one per perspective. The main AI merges their findings into the dual-axis structure, preserving every `file:line` evidence reference.
+
+    <Note>
+      Only problems **newly introduced or amplified by this change** are reported as findings. Pre-existing issues found incidentally are listed separately under "Historical Issues (outside this review scope)" and do not affect the conclusion.
+    </Note>
+  </Step>
+  <Step title="Impact Analysis">
+    Based on the diff and call chains (from `$work/wiki/` and in-code caller searches):
+
+    **Affected interfaces:**
+    - Outward-facing HTTP/RPC APIs (path, method, input/output param changes)
+    - Message producers/consumers (topic, message body changes)
+    - Scheduled jobs and workers
+    - DB schema changes (tables, columns, indexes)
+    - All callers of changed internal functions
+
+    **Affected business scenarios:**
+    - Traces call chains upward to user-visible entry points (pages, APIs, scheduled tasks)
+    - Lists scenario name and associated code entry anchor
+  </Step>
+  <Step title="Generate $work/code-review.md">
+    The report structure:
+
+    ```
+    > Review scope: <target_ref>...HEAD (merge-base: <hash>)  Repos: <list>  Generated: <date>
+    ```
+
+    | Section | Content |
+    |---------|---------|
+    | **Overview** | Per-repo change stats (files / +lines / −lines) and one-sentence overall assessment |
+    | **Change List** | Per repo → file → function: change summary + `path#L<start>-L<end>` anchor |
+    | **Dual-Axis Findings** | Spec group and Standards group, each finding classified Critical / Warning / Suggestion: `[Level] Title — file:line — Basis (spec clause / standard / security pattern) — Fix recommendation` |
+    | **Impact Analysis** | Affected interface table and affected scenario table |
+    | **Conclusion & Recommendations** | Merge readiness; proposed handling for each finding |
+
+    The user reviews the report. Misclassified items can be corrected; `code-review` re-outputs the relevant section.
+  </Step>
+  <Step title="Write Completion Status">
+    Executes:
+    ```bash
+    sh $root/harness/script/work-status.sh $work/status.yaml \
+      set progress.review true \
+      next "修复审查发现问题（fix）或执行 merge；上线前可执行 release-check"
+    ```
+  </Step>
+</Steps>
+
+## Review Conclusion: Three Options per Finding
+
+When the user reviews the report, each finding can be handled one of three ways:
+
+<CardGroup cols={2}>
+  <Card title="Fix Now" icon="wrench">
+    Run `fix` to resolve the finding. After fixing, re-run `code-review` to verify. Critical issues should always be fixed before merge.
+  </Card>
+  <Card title="Record as Follow-up" icon="bookmark">
+    The issue is acknowledged but deferred. Recorded in `status.yaml`'s `follow_ups` list. The user accepts responsibility for the deferred risk.
+  </Card>
+  <Card title="Keep As-Is" icon="check">
+    After the user reviews and confirms the risk, the finding is accepted and documented in the report. No further action needed.
+  </Card>
+</CardGroup>
+
+## Outputs
+
+<CardGroup cols={2}>
+  <Card title="$work/code-review.md" icon="file-magnifying-glass">
+    The full review report. Anchored to the three-dot diff. Shareable, archivable, and reusable as input to the `merge` gate check.
+  </Card>
+  <Card title="$work/status.yaml" icon="gear">
+    Updated with `progress.review: true` after the user confirms the report.
+  </Card>
+</CardGroup>
+
+<Info>
+  The temporary diff files in `$root/.tack/tmp/review/` are not committed and can be cleaned up at any time.
+</Info>
+
+## Next Steps
+
+- **Critical or Warning findings present:** Run `fix`, then re-run `code-review` to verify.
+- **Review passed:** Run `merge` (its gate check can reuse this report's conclusions if the diff base matches). Before release, run `release-check` to generate the go-live checklist.

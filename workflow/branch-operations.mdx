@@ -1,0 +1,186 @@
+---
+title: "Branch Operations and Merge Conflict Resolution"
+sidebarTitle: "Branch Operations"
+description: "Tack's branch-op and merge-conflict workflows handle branch integration and guided conflict resolution, using temporary branch isolation so original branches are never touched directly."
+---
+
+Tack provides two workflows for Git branch management: `branch-op` for planned branch integrations between two known branches (merge or rebase), and `merge-conflict` for resolving conflicts that arise during development merges. Both workflows use the `solve` command to guide file-by-file conflict resolution — Tack never silently picks a side on a conflict.
+
+---
+
+## Branch-Op Workflow
+
+The `branch-op` workflow handles the case where you want to integrate two existing branches — for example, "merge `feature-x` into `release-1.2`" or "rebase `feature-y` onto `main`" — without touching the original branches directly.
+
+### Trigger Words
+
+- `branch operation`, `branch ops`, `/bop`
+- Chinese: `分支操作`
+
+The `work` command routes to `branch-op` automatically when the input clearly specifies two branches and an integration operation (merge/rebase). A plain "merge" during active development routes to the `development` workflow's `merge` command instead.
+
+### How It Works
+
+Branch-op creates **timestamp-suffixed temporary branches** for both the source (A) and target (B) so that original branches are never checked out, committed to, or fast-forwarded directly. The entire operation happens on the temporaries. On success, results are pushed back to the originals; the temporaries are cleaned up at `close`.
+
+```
+initialized → preparing → integrating → pushing → completed
+                              ↕ resolving
+                          (conflict: solve →
+                           continue; still
+                           conflicting: stay
+                           in resolving)        close → cleanup
+```
+
+| State | Meaning | Entry Condition |
+|-------|---------|-----------------|
+| `initialized` | Operation (merge/rebase), source A, target B, and repos parsed | `work` intent routing complete |
+| `preparing` | Fetching remotes, creating timestamp temp branches and worktree | `branch-op.sh prepare` |
+| `integrating` | Merge or rebase executing (completes in one step if no conflicts) | `branch-op.sh integrate` |
+| `resolving` | File-by-file conflict resolution | `integrate` exits with code 10; `solve` runs |
+| `pushing` | Pushing result back to original branches | `branch-op.sh push` |
+| `completed` | Result pushed to original branches | Push succeeds |
+| `blocked` | Stalled | Remote unreachable / branch does not exist / authorization denied |
+
+### Step-by-Step Execution
+
+<Steps>
+  <Step title="Parse Intent and Confirm Repos">
+    `work` parses the operation (`merge` or `rebase`), source branch A, and target branch B from the input. Each involved repository is validated (branches must exist) and confirmed by the user. Status: `initialized`.
+  </Step>
+  <Step title="Build Skeleton and Prepare Temp Branches">
+    `work.sh --no-worktree` creates the flat workspace skeleton. Then `branch-op.sh prepare` runs for each repository:
+    - Creates `A-<timestamp>` and `B-<timestamp>` temp branches from the originals
+    - Creates a worktree checked out to the working branch (`B-<timestamp>` for merge; `A-<timestamp>` for rebase)
+    - Records temp branch names in `status.yaml`'s `branch_op` block
+
+    Status: `preparing`.
+  </Step>
+  <Step title="Perform Integration">
+    `branch-op.sh integrate` runs the merge or rebase on the temp branches. If no conflicts: proceeds directly to `pushing`. If conflicts (exit code 10): enters `resolving` and delegates to `/tack solve`.
+
+    Status: `integrating` (or `resolving` on conflict).
+  </Step>
+  <Step title="Resolve Conflicts (if needed)">
+    `/tack solve` guides you through each conflicting file — showing both sides and explaining the intent behind each change. You decide; Tack never silently picks a side. After all conflicts are resolved and staged, `/tack branch-op continue` resumes the integration.
+
+    Status: `resolving → integrating`.
+  </Step>
+  <Step title="Push Results Back">
+    `branch-op.sh push` pushes the integrated result from the temp branch back to the original branch. Push authorization rules differ by operation type — see [Push and Authorization Rules](#push-and-authorization-rules) below.
+
+    Status: `pushing → completed`.
+  </Step>
+  <Step title="Cleanup at Close">
+    Temp branches and worktrees persist after `completed` for safety. Running `/tack close` triggers `branch-op.sh cleanup`, which removes the worktree and deletes both temp branches. If the worktree contains uncommitted changes, cleanup requires explicit user confirmation.
+  </Step>
+</Steps>
+
+### Push and Authorization Rules
+
+<Tabs>
+  <Tab title="merge">
+    The temp `B-<timestamp>` branch is pushed as the original `B` branch:
+
+    ```bash
+    git push origin B-ts:B
+    ```
+
+    If `B` was updated by someone else during the operation (making it non-fast-forward), `branch-op` re-fetches and re-runs `prepare` → `integrate`. Force push is **forbidden**.
+  </Tab>
+  <Tab title="rebase">
+    Rebasing rewrites `A`'s history. Before pushing, the workflow **must**:
+
+    1. Inform the user: "A's history will be rewritten"
+    2. Obtain **explicit per-operation authorization** (no implicit consent, no re-use from a previous operation)
+    3. Call `branch-op.sh push` with the environment variable `BRANCH_OP_FORCE_AUTHORIZED=1`
+
+    The script uses `--force-with-lease`, locked to the value of `origin/A` at fetch time. If the lease fails (someone else pushed to A), the workflow re-runs `prepare` → `rebase` from scratch. Falling back to bare `--force` is **forbidden**.
+  </Tab>
+</Tabs>
+
+### The `branch_op` Block in status.yaml
+
+The `branch_op` block records the temp branch names and push state for each repository. It is the authoritative source for both resume-on-failure and `close` cleanup:
+
+```yaml
+branch_op:
+  op: "merge"
+  source: "feature-x"
+  target: "release-1.2"
+  ts: "20261001183000"
+  repos:
+    - repo: "backend"
+      source_tmp: "feature-x-20261001183000"
+      target_tmp: "release-1.2-20261001183000"
+      working: "release-1.2-20261001183000"
+      pushed: false
+  force_lease_authorized: false
+  cleaned: false
+```
+
+<Note>
+Branch-op is triggered by `work` when the input clearly specifies two existing branches and an operation (merge/rebase). A plain "merge" issued during an active development task routes to the development workflow's `merge` command instead, which includes code review delegation and MR/PR handling.
+</Note>
+
+---
+
+## Merge-Conflict Workflow
+
+The `merge-conflict` workflow handles conflicts that arise during a branch merge — either triggered from the `development` workflow's `merge` step, or activated directly when you ask to merge branches and conflicts appear.
+
+### Trigger Words
+
+- `merge conflict`, `conflict workflow`, `/mc`
+- Chinese: `冲突工作流`, `合并冲突`
+
+### State Transitions
+
+```
+initialized → fetching → merging → resolving → verifying → pushing → completed
+                    \        \          \           \          \
+                     └──────── blocked (remote unreachable / business decision needed / build fails)
+```
+
+| State | Meaning | Entry Condition |
+|-------|---------|-----------------|
+| `initialized` | Merge direction and target branch confirmed | Workspace confirmed, source/target branches identified |
+| `fetching` | Pulling latest remote | `fetch` running |
+| `merging` | Executing the merge | `merge` running |
+| `resolving` | File-by-file conflict resolution | Unmerged paths detected; `solve` running |
+| `verifying` | Build and tests after conflict resolution | All conflict markers cleared, `git add` complete |
+| `pushing` | Pushing merge result | Verification passed |
+| `completed` | Merge delivered | Push complete or platform MR merged |
+| `blocked` | Stalled | Business decision needed, remote unreachable, build failure |
+
+### Stage Commands
+
+| # | Stage | Command | Action | Status After |
+|---|-------|---------|--------|--------------|
+| 1 | Confirm merge direction | — | Confirm current and target branch per repo (defaults to `master`/`main`) | `initialized` |
+| 2 | Fetch latest | `fetch` | `git fetch --all --prune`; review ahead/behind counts | `fetching` |
+| 3 | Merge | `merge` | Platform MR/PR preferred; local `git merge <target>` as fallback | `merging` |
+| 4 | Resolve conflicts | `solve` | List conflicting files → show both sides → apply user's decision → `git add` | `resolving` |
+| 5 | Verify | build/test commands | Build passes, related tests pass | `verifying` |
+| 6 | Continue and push | `git merge --continue` (or `rebase --continue`) → `push` | Write back `mr_url` to `status.yaml` | `pushing → completed` |
+
+### Conflict Resolution Principles
+
+<CardGroup cols={2}>
+  <Card title="Always Guide, Never Decide" icon="user">
+    Every conflict is shown with both sides' diff and intent. The user makes the final call. Tack never silently accepts one side.
+  </Card>
+  <Card title="No Force Operations" icon="shield">
+    `--force`, `--force-with-lease` without consent, and `--no-verify` are all forbidden. When agreement cannot be reached, the workflow enters `blocked` and preserves the conflict state.
+  </Card>
+  <Card title="Verify Before Continuing" icon="circle-check">
+    After all conflicts are resolved and staged, the build and related tests must pass before running `git merge --continue` or `git rebase --continue`.
+  </Card>
+  <Card title="Multi-Repo: One at a Time" icon="list">
+    For projects with multiple repositories, each repo independently goes through `fetch → merge → solve → push`. Results are summarized at the end.
+  </Card>
+</CardGroup>
+
+<Note>
+When the `merge-conflict` workflow completes (merge pushed or MR merged on the platform), `status.yaml` is updated with `mr_url` and `progress.merged: true`. Control returns to the `development` workflow's `close` step for final wrap-up.
+</Note>

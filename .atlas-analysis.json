@@ -1,0 +1,141 @@
+{
+  "projectType": "framework",
+  "projectName": "Tack Harness",
+  "projectDescription": "A minimal, configurable programming workflow framework for software R&D teams that standardizes AI-assisted development using structured commands, state-machine workflows, and automatic experience distillation.",
+  "theme": "willow",
+  "primaryColor": "#4e8cff",
+  "lightColor": "#e8f0ff",
+  "darkColor": "#1a2a4a",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "concepts",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Installation",
+            "pages": [
+              "installation/overview",
+              "installation/windows"
+            ]
+          },
+          {
+            "group": "Core Workflow",
+            "pages": [
+              "workflow/development",
+              "workflow/bugfix",
+              "workflow/testing",
+              "workflow/branch-operations",
+              "workflow/workspace-structure"
+            ]
+          },
+          {
+            "group": "Extending Tack",
+            "pages": [
+              "extending/custom-commands",
+              "extending/custom-workflows",
+              "extending/hooks",
+              "extending/self-evolution"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Command Reference",
+        "groups": [
+          {
+            "group": "Project Space",
+            "pages": [
+              "commands/init",
+              "commands/work",
+              "commands/help",
+              "commands/update",
+              "commands/create-repo",
+              "commands/record",
+              "commands/evolution",
+              "commands/study"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "commands/ask",
+              "commands/spec",
+              "commands/plan",
+              "commands/tech-design",
+              "commands/code",
+              "commands/fix",
+              "commands/testcode",
+              "commands/test",
+              "commands/run",
+              "commands/code-review",
+              "commands/release-check",
+              "commands/close"
+            ]
+          },
+          {
+            "group": "Git",
+            "pages": [
+              "commands/fetch",
+              "commands/commit",
+              "commands/push",
+              "commands/merge",
+              "commands/solve",
+              "commands/worktree"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Dependency injection via Markdown files — adding one file registers one new capability with zero skill changes",
+    "Workflow state machine covering development, bugfix, testing, merge-conflict, and branch-op flows",
+    "Git worktree isolation — each requirement gets its own worktree so multiple agents can develop in parallel",
+    "Self-authoring commands via `record` — generates new commands automatically from a single command name",
+    "Guidance closed-loop self-evolution — user corrections are auto-collected and crystallized into harness entries at close",
+    "Defect origin tracing with `git-bug-trace` — pinpoints introducing commit, author, requirement ID, and MR link",
+    "Code review and release gate commands with structured checklists",
+    "Optional IDE Hook acceleration layer for TRAE and Claude Code",
+    "Outward learning via `study` — distills ideas from external skills or repositories into the harness",
+    "Cross-platform support (Linux, macOS, Windows via Git Bash / PowerShell launcher)"
+  ],
+  "publicApiSurface": [
+    "/tack init",
+    "/tack work <requirement>",
+    "/tack help",
+    "/tack update",
+    "/tack create-repo",
+    "/tack record",
+    "/tack evolution",
+    "/tack study",
+    "/tack ask",
+    "/tack spec",
+    "/tack plan",
+    "/tack tech-design",
+    "/tack code",
+    "/tack fix",
+    "/tack testcode",
+    "/tack test",
+    "/tack run",
+    "/tack code-review",
+    "/tack release-check",
+    "/tack close",
+    "/tack fetch",
+    "/tack commit",
+    "/tack push",
+    "/tack merge",
+    "/tack solve",
+    "/tack worktree",
+    "scan-routes.sh list|workflows|commands|agents|resolve",
+    "lint-harness.sh",
+    "install.sh [--agent <name>] [--target <path>] [--list] [--dry-run] [--force]"
+  ]
+}
